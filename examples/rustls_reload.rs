@@ -7,7 +7,7 @@
 //! After 20 seconds, certificate common name will be "reloaded".
 
 use axum::{routing::get, Router};
-use axum_server::tls_rustls::RustlsConfig;
+use hyper_server::tls_rustls::RustlsConfig;
 use std::{net::SocketAddr, time::Duration};
 use tokio::time::sleep;
 
@@ -27,7 +27,7 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("listening on {}", addr);
-    axum_server::bind_rustls(addr, config)
+    hyper_server::bind_rustls(addr, config)
         .serve(app.into_make_service())
         .await
         .unwrap();

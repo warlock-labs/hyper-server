@@ -13,7 +13,7 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    axum_server::bind(addr).serve(app).await.unwrap();
+    hyper_server::bind(addr).serve(app).await.unwrap();
 }
 
 async fn handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> String {
