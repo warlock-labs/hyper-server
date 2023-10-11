@@ -43,7 +43,7 @@ use tokio::{
 use tokio_rustls::server::TlsStream;
 
 pub(crate) mod export {
-    use super::*;
+    use super::{RustlsAcceptor, RustlsConfig, Server, SocketAddr};
 
     /// Create a tls server that will bind to provided address.
     #[cfg_attr(docsrs, doc(cfg(feature = "tls-rustls")))]
