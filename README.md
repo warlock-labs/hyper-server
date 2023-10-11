@@ -12,7 +12,7 @@ work with [axum], [tonic] and [tower].
 ## Features
 
 - HTTP/1 and HTTP/2
-- HTTPS through [rustls] and [openssl].
+- HTTPS through [rustls] and openssl.
 - High performance through [hyper].
 - Using [tower] make service API.
 - Exceptional [axum] compatibility. Likely to work with future [axum] releases.
