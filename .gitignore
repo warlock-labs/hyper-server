@@ -1,2 +1,17 @@
 /target
-Cargo.lock
+.idea
+.env
+.vscode
+
+broadcast/
+cache/
+out/
+
+# Local settings file - if stored under the repository
+settings.yaml
+
+# Scripts lockfile
+.lock
+
+# lcov
+lcov.info
