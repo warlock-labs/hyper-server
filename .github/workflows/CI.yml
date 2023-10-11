@@ -39,7 +39,7 @@ jobs:
       - name: Cache rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: rust-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ env.SQLX_VERSION }}-${{ env.LLVMCOV_VERSION }}
+          shared-key: rust-cache-hyper-server-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ env.LLVMCOV_VERSION }}
 
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --version=${{ env.LLVMCOV_VERSION }} --locked
