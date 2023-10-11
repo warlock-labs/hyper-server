@@ -1,7 +1,7 @@
 [![License](https://img.shields.io/crates/l/hyper-server)](https://choosealicense.com/licenses/mit/)
 [![Crates.io](https://img.shields.io/crates/v/hyper-server)](https://crates.io/crates/hyper-server)
 [![Docs](https://img.shields.io/crates/v/hyper-server?color=blue&label=docs)](https://docs.rs/hyper-server/)
-!gi[CI](https://github.com/valorem-labs-inc/hyper-server/actions/workflows/CI.yml/badge.svg)
+![CI](https://github.com/valorem-labs-inc/hyper-server/actions/workflows/CI.yml/badge.svg)
 [![codecov](https://codecov.io/gh/valorem-labs-inc/hyper-server/branch/master/graph/badge.svg?token=8W5MEJQSW6)](https://codecov.io/gh/valorem-labs-inc/hyper-server)
 
 # hyper-server
