@@ -2,11 +2,9 @@
 [![Crates.io](https://img.shields.io/crates/v/axum-server)](https://crates.io/crates/axum-server)
 [![Docs](https://img.shields.io/crates/v/axum-server?color=blue&label=docs)](https://docs.rs/axum-server/)
 
-# axum-server
+# hyper-server
 
-axum-server is a [hyper] server implementation designed to be used with [axum] framework.
-
-This project is maintained by community independently from [axum].
+hyper-server is a high performance [hyper] server implementation.
 
 ## Features
 
@@ -14,7 +12,8 @@ This project is maintained by community independently from [axum].
 - HTTPS through [rustls].
 - High performance through [hyper].
 - Using [tower] make service API.
-- Very good [axum] compatibility. Likely to work with future [axum] releases.
+- Exceptional [axum] compatibility. Likely to work with future [axum] releases.
+- Superb [tonic] compatibility. Likely to work with future [tonic] releases.
 
 ## Usage Example
 
@@ -51,7 +50,15 @@ This crate uses `#![forbid(unsafe_code)]` to ensure everything is implemented in
 
 This project is licensed under the [MIT license](LICENSE).
 
+## Why fork
+
+This project is based on the great work in [axum-server], which is no longer actively maintained.
+The rationale for forking is that we use this for critical infrastructure and want to be able to
+extend the crate and fix bugs as needed.
+
+[axum-server]: https://github.com/programatik29/axum-server
 [axum]: https://crates.io/crates/axum
 [hyper]: https://crates.io/crates/hyper
 [rustls]: https://crates.io/crates/rustls
 [tower]: https://crates.io/crates/tower
+[tonic]: https://crates.io/crates/tonic
