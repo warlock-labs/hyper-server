@@ -18,8 +18,7 @@ jobs:
 
   tests:
     name: Run tests with coverage
-    runs-on:
-      labels: ubuntu-latest-m
+    runs-on: ubuntu-latest
 
     env:
       CARGO_TERM_COLOR: always
