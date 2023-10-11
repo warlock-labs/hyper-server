@@ -6,12 +6,13 @@
 
 # hyper-server
 
-hyper-server is a high performance [hyper] server implementation.
+hyper-server is a high performance [hyper] server implementation designed to 
+work with [axum], [tonic] and [tower].
 
 ## Features
 
 - HTTP/1 and HTTP/2
-- HTTPS through [rustls].
+- HTTPS through [rustls] and [openssl].
 - High performance through [hyper].
 - Using [tower] make service API.
 - Exceptional [axum] compatibility. Likely to work with future [axum] releases.
