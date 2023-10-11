@@ -46,6 +46,8 @@ jobs:
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest
+    env:
+      LLVMCOV_VERSION: 0.5.14
     steps:
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --version=${{ env.LLVMCOV_VERSION }} --locked
