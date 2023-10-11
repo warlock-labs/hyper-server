@@ -224,6 +224,8 @@ impl<A> Server<A> {
             result = accept_loop_future => result,
         };
 
+        // TODO(Resolve clippy warning here)
+        #[allow(clippy::question_mark)]
         if let Err(e) = result {
             return Err(e);
         }
