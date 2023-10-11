@@ -27,7 +27,7 @@ pub struct DefaultAcceptor;
 impl DefaultAcceptor {
     /// Create a new default acceptor.
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 }
 

@@ -8,7 +8,7 @@
 //!  - Deadline is 30 seconds. Server will shutdown anyways when deadline is elapsed.
 
 use axum::{routing::get, Router};
-use axum_server::Handle;
+use hyper_server::Handle;
 use std::{net::SocketAddr, time::Duration};
 use tokio::time::sleep;
 
@@ -23,7 +23,7 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("listening on {}", addr);
-    axum_server::bind(addr)
+    hyper_server::bind(addr)
         .handle(handle)
         .serve(app.into_make_service())
         .await

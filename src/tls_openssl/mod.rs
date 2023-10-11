@@ -4,7 +4,7 @@
 //!
 //! ```rust,no_run
 //! use axum::{routing::get, Router};
-//! use axum_server::tls_openssl::OpenSSLConfig;
+//! use hyper_server::tls_openssl::OpenSSLConfig;
 //! use std::net::SocketAddr;
 //!
 //! #[tokio::main]
@@ -19,7 +19,7 @@
 //!
 //!     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 //!     println!("listening on {}", addr);
-//!     axum_server::bind_openssl(addr, config)
+//!     hyper_server::bind_openssl(addr, config)
 //!         .serve(app.into_make_service())
 //!         .await
 //!         .unwrap();
@@ -161,7 +161,7 @@ impl TryFrom<SslAcceptorBuilder> for OpenSSLConfig {
     ///
     /// # Example
     /// ```
-    /// use axum_server::tls_openssl::OpenSSLConfig;
+    /// use hyper_server::tls_openssl::OpenSSLConfig;
     /// use openssl::ssl::{SslAcceptor, SslMethod};
     /// use std::convert::TryFrom;
     ///

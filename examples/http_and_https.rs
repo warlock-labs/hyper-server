@@ -4,7 +4,7 @@
 //! "https://localhost:3443".
 
 use axum::{http::uri::Uri, response::Redirect, routing::get, Router};
-use axum_server::tls_rustls::RustlsConfig;
+use hyper_server::tls_rustls::RustlsConfig;
 use std::net::SocketAddr;
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn http_server() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("http listening on {}", addr);
-    axum_server::bind(addr)
+    hyper_server::bind(addr)
         .serve(app.into_make_service())
         .await
         .unwrap();
@@ -45,7 +45,7 @@ async fn https_server() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3443));
     println!("https listening on {}", addr);
-    axum_server::bind_rustls(addr, config)
+    hyper_server::bind_rustls(addr, config)
         .serve(app.into_make_service())
         .await
         .unwrap();

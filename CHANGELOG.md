@@ -38,8 +38,8 @@ None.
 
 # 0.4.2 (5. August 2022)
 
-- **added:** Added `Server::from_tcp`, `axum_server::from_tcp` and
-  `axum_server::from_tcp_rustls` methods to create `Server` from
+- **added:** Added `Server::from_tcp`, `hyper_server::from_tcp` and
+  `hyper_server::from_tcp_rustls` methods to create `Server` from
   `std::net::TcpListener`.
 
 # 0.4.1 (29. July 2022)
