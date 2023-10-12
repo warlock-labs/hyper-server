@@ -58,6 +58,7 @@ const V2_PREFIX_LEN: usize = 12;
 const V2_MINIMUM_LEN: usize = 16;
 /// The index of the start of the big-endian u16 length.
 const LENGTH: usize = 14;
+const DEFAULT_BUFFER_LEN: usize = 512;
 
 /// Note: Currently only supports the V2 PROXY header format.
 /// See proxy header spec: <https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt>
@@ -68,10 +69,10 @@ where
     I: AsyncRead + Unpin,
 {
     // mutable buffer for storing stream data
-    let mut buffer = vec![0; V2_MINIMUM_LEN];
+    let mut buffer = [0; DEFAULT_BUFFER_LEN];
 
     // 1. read minimum length
-    if let Err(e) = stream.read_exact(&mut buffer).await {
+    if let Err(e) = stream.read_exact(&mut buffer[..V2_MINIMUM_LEN]).await {
         let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to find a V2 Proxy Protocol header.", e);
         return Err(io::Error::new(e.kind(), msg));
     }
@@ -95,10 +96,18 @@ where
     let length = u16::from_be_bytes([buffer[LENGTH], buffer[LENGTH + 1]]) as usize;
     let full_length = V2_MINIMUM_LEN + length;
 
-    buffer.resize(full_length, 0);
+    if full_length > DEFAULT_BUFFER_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("V2 Proxy Protocol header length is too long. Consider increasing default buffer size. Header length: {}", full_length),
+        ));
+    }
 
     // 4. read the remaining header length
-    if let Err(e) = stream.read_exact(&mut buffer[V2_MINIMUM_LEN..]).await {
+    if let Err(e) = stream
+        .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
+        .await
+    {
         let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
         return Err(io::Error::new(e.kind(), msg));
     }
