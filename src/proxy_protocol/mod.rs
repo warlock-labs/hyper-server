@@ -180,6 +180,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<B>) -> Self::Future {
+        // The full socket address is available in the proxy header, hence why we include port
         let mut forwarded_string = match self.client_address {
             Some(socket_addr) => match socket_addr {
                 SocketAddr::V4(addr) => {
