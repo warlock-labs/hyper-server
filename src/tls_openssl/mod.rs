@@ -193,9 +193,7 @@ impl fmt::Debug for OpenSSLConfig {
 }
 
 #[cfg(test)]
-mod tests {
-    #[cfg(feature = "proxy-protocol")]
-    use crate::proxy_protocol::tests::{forward_ip_handler, start_proxy};
+pub(crate) mod tests {
     use crate::{
         handle::Handle,
         tls_openssl::{self, OpenSSLConfig},
@@ -219,23 +217,7 @@ mod tests {
     async fn start_and_request() {
         let (_handle, _server_task, addr) = start_server().await;
 
-        let (mut client, _conn, _client_addr) = connect(addr).await;
-
-        let (_parts, body) = send_empty_request(&mut client).await;
-
-        assert_eq!(body.as_ref(), b"Hello, world!");
-    }
-
-    #[cfg(feature = "proxy-protocol")]
-    #[tokio::test]
-    async fn proxy_protocol_start_and_request() {
-        let (_handle, _server_task, server_addr) = start_proxy_protocol_server(false).await;
-
-        let addr = start_proxy(server_addr, true)
-            .await
-            .expect("Failed to start proxy");
-
-        let (mut client, _conn, _client_addr) = connect(addr).await;
+        let (mut client, _conn) = connect(addr).await;
 
         let (_parts, body) = send_empty_request(&mut client).await;
 
@@ -246,7 +228,7 @@ mod tests {
     async fn test_shutdown() {
         let (handle, _server_task, addr) = start_server().await;
 
-        let (mut client, conn, _client_addr) = connect(addr).await;
+        let (mut client, conn) = connect(addr).await;
 
         handle.shutdown();
 
@@ -267,7 +249,7 @@ mod tests {
     async fn test_graceful_shutdown() {
         let (handle, server_task, addr) = start_server().await;
 
-        let (mut client, conn, _client_addr) = connect(addr).await;
+        let (mut client, conn) = connect(addr).await;
 
         handle.graceful_shutdown(None);
 
@@ -292,7 +274,7 @@ mod tests {
     async fn test_graceful_shutdown_timed() {
         let (handle, server_task, addr) = start_server().await;
 
-        let (mut client, _conn, _client_addr) = connect(addr).await;
+        let (mut client, _conn) = connect(addr).await;
 
         handle.graceful_shutdown(Some(Duration::from_millis(250)));
 
@@ -310,23 +292,6 @@ mod tests {
             .unwrap();
 
         assert!(server_result.is_ok());
-    }
-
-    #[cfg(feature = "proxy-protocol")]
-    #[tokio::test]
-    async fn server_receives_decoded_client_address() {
-        let (_handle, _server_task, server_addr) = start_proxy_protocol_server(true).await;
-
-        let addr = start_proxy(server_addr, true)
-            .await
-            .expect("Failed to start proxy");
-
-        let (mut client, _conn, client_addr) = connect(addr).await;
-
-        let (_parts, body) = send_empty_request(&mut client).await;
-        let body_str = String::from_utf8(body.to_vec()).expect("Response body is not valid UTF-8");
-
-        assert_eq!(body_str, format!("for={}", client_addr));
     }
 
     async fn start_server() -> (Handle, JoinHandle<io::Result<()>>, SocketAddr) {
@@ -355,44 +320,8 @@ mod tests {
         (handle, server_task, addr)
     }
 
-    #[cfg(feature = "proxy-protocol")]
-    async fn start_proxy_protocol_server(
-        forward_ip: bool,
-    ) -> (Handle, JoinHandle<io::Result<()>>, SocketAddr) {
-        let handle = Handle::new();
-
-        let server_handle = handle.clone();
-        let server_task = tokio::spawn(async move {
-            let app;
-            if forward_ip {
-                app = Router::new().route("/", get(forward_ip_handler));
-            } else {
-                app = Router::new().route("/", get(|| async { "Hello, world!" }));
-            }
-
-            let config = OpenSSLConfig::from_pem_file(
-                "examples/self-signed-certs/cert.pem",
-                "examples/self-signed-certs/key.pem",
-            )
-            .unwrap();
-
-            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-
-            tls_openssl::bind_openssl(addr, config)
-                .handle(server_handle)
-                .enable_proxy_protocol()
-                .serve(app.into_make_service())
-                .await
-        });
-
-        let addr = handle.listening().await.unwrap();
-
-        (handle, server_task, addr)
-    }
-
-    async fn connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>, SocketAddr) {
+    async fn connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>) {
         let stream = TcpStream::connect(addr).await.unwrap();
-        let client_addr = stream.local_addr().unwrap();
         let tls_stream = tls_connector(dns_name(), stream).await;
 
         let (send_request, connection) = handshake(tls_stream).await.unwrap();
@@ -401,7 +330,7 @@ mod tests {
             let _ = connection.await;
         });
 
-        (send_request, task, client_addr)
+        (send_request, task)
     }
 
     async fn send_empty_request(client: &mut SendRequest<Body>) -> (response::Parts, Bytes) {
@@ -418,7 +347,7 @@ mod tests {
         (parts, body)
     }
 
-    async fn tls_connector(hostname: &str, stream: TcpStream) -> SslStream<TcpStream> {
+    pub(crate) async fn tls_connector(hostname: &str, stream: TcpStream) -> SslStream<TcpStream> {
         let mut tls_parms = SslConnector::builder(SslMethod::tls_client()).unwrap();
         tls_parms.set_verify(SslVerifyMode::NONE);
         let hostname_owned = hostname.to_string();
@@ -437,7 +366,7 @@ mod tests {
         tls_stream
     }
 
-    fn dns_name() -> &'static str {
+    pub(crate) fn dns_name() -> &'static str {
         "localhost"
     }
 }

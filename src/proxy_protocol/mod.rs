@@ -284,6 +284,18 @@ impl<A> fmt::Debug for ProxyProtocolAcceptor<A> {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[cfg(feature = "tls-openssl")]
+    use crate::tls_openssl::{
+        self,
+        tests::{dns_name as openssl_dns_name, tls_connector as openssl_connector},
+        OpenSSLConfig,
+    };
+    #[cfg(feature = "tls-rustls")]
+    use crate::tls_rustls::{
+        self,
+        tests::{dns_name as rustls_dns_name, tls_connector as rustls_connector},
+        RustlsConfig,
+    };
     use crate::{handle::Handle, server::Server};
     use axum::http::Response;
     use axum::{routing::get, Router};
@@ -319,7 +331,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn server_receives_decoded_client_address() {
+    async fn server_receives_client_address() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
         let addr = start_proxy(server_addr, true)
@@ -328,7 +340,7 @@ pub(crate) mod tests {
 
         let (mut client, _conn, client_addr) = connect(addr).await;
 
-        let (parts, _body) = send_empty_request(&mut client).await;
+        let (parts, body) = send_empty_request(&mut client).await;
 
         // Check for the Forwarded header
         let forwarded_header = parts
@@ -339,6 +351,57 @@ pub(crate) mod tests {
             .expect("Failed to convert Forwarded header to str");
 
         assert!(forwarded_header.contains(&format!("for={}", client_addr)));
+        assert_eq!(body.as_ref(), b"Hello, world!");
+    }
+
+    #[cfg(feature = "tls-rustls")]
+    #[tokio::test]
+    async fn rustls_server_receives_client_address() {
+        let (_handle, _server_task, server_addr) = start_rustls_server().await;
+
+        let addr = start_proxy(server_addr, true)
+            .await
+            .expect("Failed to start proxy");
+
+        let (mut client, _conn, client_addr) = rustls_connect(addr).await;
+
+        let (parts, body) = send_empty_request(&mut client).await;
+
+        // Check for the Forwarded header
+        let forwarded_header = parts
+            .headers
+            .get("Forwarded")
+            .expect("No Forwarded header present")
+            .to_str()
+            .expect("Failed to convert Forwarded header to str");
+
+        assert!(forwarded_header.contains(&format!("for={}", client_addr)));
+        assert_eq!(body.as_ref(), b"Hello, world!");
+    }
+
+    #[cfg(feature = "tls-openssl")]
+    #[tokio::test]
+    async fn openssl_server_receives_client_address() {
+        let (_handle, _server_task, server_addr) = start_openssl_server().await;
+
+        let addr = start_proxy(server_addr, true)
+            .await
+            .expect("Failed to start proxy");
+
+        let (mut client, _conn, client_addr) = openssl_connect(addr).await;
+
+        let (parts, body) = send_empty_request(&mut client).await;
+
+        // Check for the Forwarded header
+        let forwarded_header = parts
+            .headers
+            .get("Forwarded")
+            .expect("No Forwarded header present")
+            .to_str()
+            .expect("Failed to convert Forwarded header to str");
+
+        assert!(forwarded_header.contains(&format!("for={}", client_addr)));
+        assert_eq!(body.as_ref(), b"Hello, world!");
     }
 
     #[tokio::test]
@@ -418,6 +481,62 @@ pub(crate) mod tests {
                     .serve(app.into_make_service())
                     .await
             }
+        });
+
+        let addr = handle.listening().await.unwrap();
+
+        (handle, server_task, addr)
+    }
+
+    #[cfg(feature = "tls-rustls")]
+    async fn start_rustls_server() -> (Handle, JoinHandle<io::Result<()>>, SocketAddr) {
+        let handle = Handle::new();
+
+        let server_handle = handle.clone();
+        let server_task = tokio::spawn(async move {
+            let app = Router::new().route("/", get(forward_ip_handler));
+
+            let config = RustlsConfig::from_pem_file(
+                "examples/self-signed-certs/cert.pem",
+                "examples/self-signed-certs/key.pem",
+            )
+            .await?;
+
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+
+            tls_rustls::bind_rustls(addr, config)
+                .handle(server_handle)
+                .enable_proxy_protocol()
+                .serve(app.into_make_service())
+                .await
+        });
+
+        let addr = handle.listening().await.unwrap();
+
+        (handle, server_task, addr)
+    }
+
+    #[cfg(feature = "tls-openssl")]
+    async fn start_openssl_server() -> (Handle, JoinHandle<io::Result<()>>, SocketAddr) {
+        let handle = Handle::new();
+
+        let server_handle = handle.clone();
+        let server_task = tokio::spawn(async move {
+            let app = Router::new().route("/", get(forward_ip_handler));
+
+            let config = OpenSSLConfig::from_pem_file(
+                "examples/self-signed-certs/cert.pem",
+                "examples/self-signed-certs/key.pem",
+            )
+            .unwrap();
+
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+
+            tls_openssl::bind_openssl(addr, config)
+                .handle(server_handle)
+                .enable_proxy_protocol()
+                .serve(app.into_make_service())
+                .await
         });
 
         let addr = handle.listening().await.unwrap();
@@ -534,10 +653,42 @@ pub(crate) mod tests {
 
     async fn connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>, SocketAddr) {
         let stream = TcpStream::connect(addr).await.unwrap();
-
         let client_addr = stream.local_addr().unwrap();
 
         let (send_request, connection) = handshake(stream).await.unwrap();
+
+        let task = tokio::spawn(async move {
+            let _ = connection.await;
+        });
+
+        (send_request, task, client_addr)
+    }
+
+    #[cfg(feature = "tls-rustls")]
+    async fn rustls_connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>, SocketAddr) {
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let client_addr = stream.local_addr().unwrap();
+        let tls_stream = rustls_connector()
+            .connect(rustls_dns_name(), stream)
+            .await
+            .unwrap();
+
+        let (send_request, connection) = handshake(tls_stream).await.unwrap();
+
+        let task = tokio::spawn(async move {
+            let _ = connection.await;
+        });
+
+        (send_request, task, client_addr)
+    }
+
+    #[cfg(feature = "tls-openssl")]
+    async fn openssl_connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>, SocketAddr) {
+        let stream = TcpStream::connect(addr).await.unwrap();
+        let client_addr = stream.local_addr().unwrap();
+        let tls_stream = openssl_connector(openssl_dns_name(), stream).await;
+
+        let (send_request, connection) = handshake(tls_stream).await.unwrap();
 
         let task = tokio::spawn(async move {
             let _ = connection.await;
