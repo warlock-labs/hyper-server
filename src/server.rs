@@ -17,6 +17,7 @@ use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
     pin::Pin,
+    time::Duration,
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -107,9 +108,17 @@ impl<A> Server<A> {
     #[cfg(feature = "proxy-protocol")]
     /// Enable proxy protocol header parsing.
     /// Note has to be called after initial acceptor is set.
-    pub fn enable_proxy_protocol(self) -> Server<ProxyProtocolAcceptor<A>> {
+    pub fn enable_proxy_protocol(
+        self,
+        parsing_timeout: Option<Duration>,
+    ) -> Server<ProxyProtocolAcceptor<A>> {
         let initial_acceptor = self.acceptor;
-        let acceptor = ProxyProtocolAcceptor::new(initial_acceptor);
+        let mut acceptor = ProxyProtocolAcceptor::new(initial_acceptor);
+
+        if let Some(val) = parsing_timeout {
+            acceptor = acceptor.parsing_timeout(val);
+        }
+
         Server {
             acceptor,
             listener: self.listener,

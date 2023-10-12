@@ -15,6 +15,7 @@
 //! ```rust,no_run
 //! use axum::{routing::get, Router};
 //! use std::net::SocketAddr;
+//! use std::time::Duration;
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -22,8 +23,12 @@
 //!
 //!    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 //!    println!("listening on {}", addr);
+//!
+//!    // Can configure if you want different from the default of 5 seconds, otherwise None.
+//!    let proxy_header_timeout = Some(Duration::from_secs(2));
+//!
 //!    hyper_server::bind(addr)
-//!        .enable_proxy_protocol()
+//!        .enable_proxy_protocol(proxy_header_timeout)
 //!        .serve(app.into_make_service())
 //!        .await
 //!        .unwrap();
@@ -233,7 +238,7 @@ impl<A> ProxyProtocolAcceptor<A> {
     /// This is compatible with tls acceptors.
     pub fn new(inner: A) -> Self {
         #[cfg(not(test))]
-        let parsing_timeout = Duration::from_secs(10);
+        let parsing_timeout = Duration::from_secs(5);
 
         // Don't force tests to wait too long.
         #[cfg(test)]
@@ -245,7 +250,7 @@ impl<A> ProxyProtocolAcceptor<A> {
         }
     }
 
-    /// Override the default Proxy Header parsing timeout of 10 seconds, except during testing.
+    /// Override the default Proxy Header parsing timeout.
     pub fn parsing_timeout(mut self, val: Duration) -> Self {
         self.parsing_timeout = val;
         self
@@ -484,7 +489,7 @@ pub(crate) mod tests {
             if parse_proxy_header {
                 Server::bind(addr)
                     .handle(server_handle)
-                    .enable_proxy_protocol()
+                    .enable_proxy_protocol(None)
                     .serve(app.into_make_service())
                     .await
             } else {
@@ -518,7 +523,7 @@ pub(crate) mod tests {
 
             tls_rustls::bind_rustls(addr, config)
                 .handle(server_handle)
-                .enable_proxy_protocol()
+                .enable_proxy_protocol(None)
                 .serve(app.into_make_service())
                 .await
         });
@@ -546,7 +551,7 @@ pub(crate) mod tests {
 
             tls_openssl::bind_openssl(addr, config)
                 .handle(server_handle)
-                .enable_proxy_protocol()
+                .enable_proxy_protocol(None)
                 .serve(app.into_make_service())
                 .await
         });
