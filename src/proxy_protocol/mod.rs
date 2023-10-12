@@ -1,11 +1,14 @@
-//! The PROXY protocol header compatibility. See spec: <https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt>.
-//! This feature allows the proxy header to be read from the TCP stream, and any client address is forwarded on
-//! in the HTTP `forwarded` header for the rest of the server.
+//! This feature allows the hyper_server to be used behind a layer 4 load balancer whilst the proxy
+//! protocol is enabled to preserve the client IP address and port.
+//! See The PROXY protocol spec for more details: <https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt>.
+//!
+//! Any client address found in the proxy protocol header is forwarded on in the HTTP `forwarded`
+//! header to be accessible by the rest server.
 //!
 //! Note: if you are setting a custom acceptor, `enable_proxy_protocol` must be called after this is set.
-//! It is best to use directly before calling `serve` when all options are configured. This is because it
-//! wraps the initial acceptor, so the proxy header is removed from the beginning off the stream
-//! before the messages are forwarded on.
+//! It is best to use directly before calling `serve` when the inner acceptor is already configured.
+//! ProxyProtocolAcceptor wraps the initial acceptor, so the proxy header is removed from the
+//! beginning of the stream before the messages are forwarded on.
 //!
 //! # Example
 //!
