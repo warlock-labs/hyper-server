@@ -429,9 +429,21 @@ pub(crate) mod tests {
 
         let (mut client, _conn, _client_addr) = connect(addr).await;
 
-        let (_parts, body) = send_empty_request(&mut client).await;
-
-        assert!(body.as_ref() != b"Hello, world!");
+        match client
+            .ready()
+            .await
+            .unwrap()
+            .call(Request::new(Body::empty()))
+            .await
+        {
+            Ok(_) => panic!("Should have failed"),
+            Err(e) => {
+                if e.is_incomplete_message() {
+                } else {
+                    panic!("Received unexpected error");
+                }
+            }
+        }
     }
 
     #[tokio::test]
