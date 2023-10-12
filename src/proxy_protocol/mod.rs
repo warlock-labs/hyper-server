@@ -164,7 +164,7 @@ where
 #[derive(Debug)]
 pub struct ForwardClientIp<S> {
     inner: S,
-    client_address_opt: Option<SocketAddr>,
+    client_address: Option<SocketAddr>,
 }
 
 impl<S> Service<Request<hyper::Body>> for ForwardClientIp<S>
@@ -180,7 +180,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<hyper::Body>) -> Self::Future {
-        let forwarded_string = match self.client_address_opt {
+        let forwarded_string = match self.client_address {
             Some(socket_addr) => match socket_addr {
                 SocketAddr::V4(addr) => {
                     format!("for={}:{}", addr.ip(), addr.port())

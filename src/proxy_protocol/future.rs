@@ -65,7 +65,7 @@ pin_project! {
         ForwardIp {
             #[pin]
             future: A::Future,
-            client_address_opt: Option<SocketAddr>,
+            client_address: Option<SocketAddr>,
         },
     }
 }
@@ -88,13 +88,13 @@ where
                     acceptor,
                     service,
                 } => match future.poll(cx) {
-                    Poll::Ready(Ok(Ok((stream, client_address_opt)))) => {
+                    Poll::Ready(Ok(Ok((stream, client_address)))) => {
                         let service = service.take().expect("future polled after ready");
                         let future = acceptor.accept(stream, service);
 
                         this.inner.set(AcceptFuture::ForwardIp {
                             future,
-                            client_address_opt,
+                            client_address,
                         });
                     }
                     Poll::Ready(Ok(Err(e))) => return Poll::Ready(Err(e)),
@@ -105,12 +105,12 @@ where
                 },
                 AcceptFutureProj::ForwardIp {
                     future,
-                    client_address_opt,
+                    client_address,
                 } => match future.poll(cx) {
                     Poll::Ready(Ok((stream, service))) => {
                         let service = ForwardClientIp {
                             inner: service,
-                            client_address_opt: *client_address_opt,
+                            client_address: *client_address,
                         };
 
                         return Poll::Ready(Ok((stream, service)));
