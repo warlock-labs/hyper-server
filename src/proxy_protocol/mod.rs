@@ -65,8 +65,6 @@ const V2_MINIMUM_LEN: usize = 16;
 const LENGTH: usize = 14;
 const DEFAULT_BUFFER_LEN: usize = 512;
 
-/// Note: Currently only supports the V2 PROXY header format.
-/// See proxy header spec: <https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt>
 pub(crate) async fn read_proxy_header<I>(
     mut stream: I,
 ) -> Result<(I, Option<SocketAddr>), io::Error>
@@ -77,10 +75,7 @@ where
     let mut buffer = [0; DEFAULT_BUFFER_LEN];
 
     // 1. read minimum length
-    if let Err(e) = stream.read_exact(&mut buffer[..V2_MINIMUM_LEN]).await {
-        let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to find a V2 Proxy Protocol header.", e);
-        return Err(io::Error::new(e.kind(), msg));
-    }
+    stream.read_exact(&mut buffer[..V2_MINIMUM_LEN]).await?;
 
     // 2. check for v2 prefix
     if &buffer[..V2_PREFIX_LEN] != v2::PROTOCOL_PREFIX {
@@ -111,25 +106,13 @@ where
 
     // 4. read the remaining header length
     if let Some(ref mut vec) = dynamic_buffer {
-        if let Err(e) = stream
-            .read_exact(&mut vec[V2_MINIMUM_LEN..full_length])
-            .await
-        {
-            let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
-            return Err(io::Error::new(e.kind(), msg));
-        }
-    } else if let Err(e) = stream
-        .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
-        .await
-    {
-        let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
-        return Err(io::Error::new(e.kind(), msg));
+        stream.read_exact(&mut vec[V2_MINIMUM_LEN..full_length]).await?;
+    } else {
+        stream.read_exact(&mut buffer[V2_MINIMUM_LEN..full_length]).await?;
     }
 
-    // Choose which buffer to parse
-    let buffer_to_parse = dynamic_buffer.as_deref().unwrap_or(&buffer[..]);
-
     // 5. parse the header
+    let buffer_to_parse = dynamic_buffer.as_deref().unwrap_or(&buffer[..]); // Choose which buffer to parse
     let header = HeaderResult::parse(&buffer_to_parse[..full_length]);
 
     match header {
@@ -155,7 +138,6 @@ where
                     ));
                 }
                 v2::Addresses::Unspecified => {
-                    // V2 PROXY header addresses "Unspecified"
                     // Return client address as `None` so that "unknown" is used in the http header
                     return Ok((stream, None));
                 }
