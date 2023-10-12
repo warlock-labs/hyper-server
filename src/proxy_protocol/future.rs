@@ -4,16 +4,15 @@ use crate::proxy_protocol::ForwardClientIp;
 use std::{
     fmt,
     future::Future,
-    io::{self, Error, ErrorKind},
+    io,
     net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
-    time::Duration,
 };
 
 use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::time::{timeout, Timeout};
+use tokio::time::Timeout;
 
 pin_project! {
     /// Future type for [`ProxyProtocolAcceptor`](crate::proxy_protocol::ProxyProtocolAcceptor).
@@ -29,14 +28,13 @@ pin_project! {
 impl<F, A, I, S> ProxyProtocolAcceptorFuture<F, A, I, S>
 where
     A: Accept<I, S>,
-    I: AsyncRead + AsyncWrite + Unpin + 'static,
+    I: AsyncRead + AsyncWrite + Unpin,
 {
-    pub(crate) fn new(future: F, acceptor: A, service: S, parsing_timeout: Duration) -> Self {
-        let inner = AcceptFuture::Timeout {
-            future: Some(future),
-            acceptor: Some(acceptor),
+    pub(crate) fn new(future: Timeout<F>, acceptor: A, service: S) -> Self {
+        let inner = AcceptFuture::ReadHeader {
+            future,
+            acceptor,
             service: Some(service),
-            parsing_timeout,
         };
         Self { inner }
     }
@@ -58,12 +56,6 @@ pin_project! {
     where
         A: Accept<I, S>,
     {
-        Timeout {
-            future: Option<F>,
-            acceptor: Option<A>,
-            service: Option<S>,
-            parsing_timeout: Duration,
-        },
         ReadHeader {
             #[pin]
             future: Timeout<F>,
@@ -81,7 +73,7 @@ pin_project! {
 impl<F, A, I, S> Future for ProxyProtocolAcceptorFuture<F, A, I, S>
 where
     A: Accept<I, S>,
-    I: AsyncRead + AsyncWrite + Unpin + 'static,
+    I: AsyncRead + AsyncWrite + Unpin,
     F: Future<Output = Result<(I, Option<SocketAddr>), io::Error>>,
 {
     type Output = io::Result<(A::Stream, ForwardClientIp<A::Service>)>;
@@ -91,23 +83,6 @@ where
 
         loop {
             match this.inner.as_mut().project() {
-                AcceptFutureProj::Timeout {
-                    future,
-                    acceptor,
-                    service,
-                    parsing_timeout,
-                } => {
-                    let parsing_timeout = *parsing_timeout;
-                    let future = future.take().expect("future polled after ready");
-                    let acceptor = acceptor.take().expect("future polled after ready");
-                    let service = service.take().expect("future polled after ready");
-
-                    this.inner.set(AcceptFuture::ReadHeader {
-                        future: timeout(parsing_timeout, future),
-                        acceptor,
-                        service: Some(service),
-                    });
-                }
                 AcceptFutureProj::ReadHeader {
                     future,
                     acceptor,
@@ -124,7 +99,7 @@ where
                     }
                     Poll::Ready(Ok(Err(e))) => return Poll::Ready(Err(e)),
                     Poll::Ready(Err(timeout)) => {
-                        return Poll::Ready(Err(Error::new(ErrorKind::TimedOut, timeout)))
+                        return Poll::Ready(Err(io::Error::new(io::ErrorKind::TimedOut, timeout)))
                     }
                     Poll::Pending => return Poll::Pending,
                 },

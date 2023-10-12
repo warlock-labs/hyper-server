@@ -40,7 +40,10 @@ use std::{
 use http::HeaderValue;
 use http::Request;
 use ppp::{v1, v2, HeaderResult};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite},
+    time::timeout,
+};
 use tower_service::Service;
 
 pub mod future;
@@ -239,7 +242,7 @@ impl<A, I, S> Accept<I, S> for ProxyProtocolAcceptor<A>
 where
     A: Accept<I, S> + Clone,
     A::Stream: AsyncRead + AsyncWrite + Unpin,
-    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    I: AsyncRead + AsyncWrite + Unpin + Send,
 {
     type Stream = A::Stream;
     type Service = ForwardClientIp<A::Service>;
@@ -251,15 +254,12 @@ where
     >;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
-        let read_header_future = Box::pin(read_proxy_header(stream));
-        let inner_acceptor = self.inner.clone();
-        let parsing_timeout = self.parsing_timeout;
+        let future = Box::pin(read_proxy_header(stream));
 
         ProxyProtocolAcceptorFuture::new(
-            read_header_future,
-            inner_acceptor,
+            timeout(self.parsing_timeout, future),
+            self.inner.clone(),
             service,
-            parsing_timeout,
         )
     }
 }
