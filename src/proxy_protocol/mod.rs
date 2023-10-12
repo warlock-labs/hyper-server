@@ -161,15 +161,15 @@ where
 
 /// Middleware for adding client IP address to the request `forwarded` header.
 /// see spec: <https://www.rfc-editor.org/rfc/rfc7239#section-5.2>
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ForwardClientIp<S> {
     inner: S,
     client_address: Option<SocketAddr>,
 }
 
-impl<S> Service<Request<hyper::Body>> for ForwardClientIp<S>
+impl<B, S> Service<Request<B>> for ForwardClientIp<S>
 where
-    S: Service<Request<hyper::Body>>,
+    S: Service<Request<B>>,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -179,7 +179,7 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, mut req: Request<hyper::Body>) -> Self::Future {
+    fn call(&mut self, mut req: Request<B>) -> Self::Future {
         let forwarded_string = match self.client_address {
             Some(socket_addr) => match socket_addr {
                 SocketAddr::V4(addr) => {
