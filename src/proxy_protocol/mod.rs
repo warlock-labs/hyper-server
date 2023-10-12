@@ -1,4 +1,4 @@
-//! This feature allows the hyper_server to be used behind a layer 4 load balancer whilst the proxy
+//! This feature allows the `hyper_server` to be used behind a layer 4 load balancer whilst the proxy
 //! protocol is enabled to preserve the client IP address and port.
 //! See The PROXY protocol spec for more details: <https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt>.
 //!
@@ -7,7 +7,7 @@
 //!
 //! Note: if you are setting a custom acceptor, `enable_proxy_protocol` must be called after this is set.
 //! It is best to use directly before calling `serve` when the inner acceptor is already configured.
-//! ProxyProtocolAcceptor wraps the initial acceptor, so the proxy header is removed from the
+//! `ProxyProtocolAcceptor` wraps the initial acceptor, so the proxy header is removed from the
 //! beginning of the stream before the messages are forwarded on.
 //!
 //! # Example
