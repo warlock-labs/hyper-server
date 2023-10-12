@@ -56,10 +56,8 @@ const V1_PREFIX_LEN: usize = 5;
 const V2_PREFIX_LEN: usize = 12;
 /// The index of the version-command byte.
 const V2_MINIMUM_LEN: usize = 16;
-/// The index of the address family-protocol byte.
-const ADDRESS_FAMILY_PROTOCOL: usize = V2_PREFIX_LEN + 1;
 /// The index of the start of the big-endian u16 length.
-const LENGTH: usize = ADDRESS_FAMILY_PROTOCOL + 1;
+const LENGTH: usize = 14;
 const DEFAULT_BUFFER_LEN: usize = 512;
 
 /// Note: Currently only supports the V2 PROXY header format.
