@@ -242,7 +242,7 @@ impl<A, I, S> Accept<I, S> for ProxyProtocolAcceptor<A>
 where
     A: Accept<I, S> + Clone,
     A::Stream: AsyncRead + AsyncWrite + Unpin,
-    I: AsyncRead + AsyncWrite + Unpin + Send,
+    I: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     type Stream = A::Stream;
     type Service = ForwardClientIp<A::Service>;
