@@ -96,24 +96,38 @@ where
     let length = u16::from_be_bytes([buffer[LENGTH], buffer[LENGTH + 1]]) as usize;
     let full_length = V2_MINIMUM_LEN + length;
 
-    if full_length > DEFAULT_BUFFER_LEN {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("V2 Proxy Protocol header length is too long. Consider increasing default buffer size. Header length: {}", full_length),
-        ));
-    }
+    let mut dynamic_buffer = if full_length > DEFAULT_BUFFER_LEN {
+        let mut vec = Vec::with_capacity(full_length);
+        vec.extend_from_slice(&buffer[..V2_MINIMUM_LEN]);
+        Some(vec)
+    } else {
+        None
+    };
 
     // 4. read the remaining header length
-    if let Err(e) = stream
-        .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
-        .await
-    {
-        let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
-        return Err(io::Error::new(e.kind(), msg));
+    if let Some(ref mut vec) = dynamic_buffer {
+        if let Err(e) = stream
+            .read_exact(&mut vec[V2_MINIMUM_LEN..full_length])
+            .await
+        {
+            let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
+            return Err(io::Error::new(e.kind(), msg));
+        }
+    } else {
+        if let Err(e) = stream
+            .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
+            .await
+        {
+            let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
+            return Err(io::Error::new(e.kind(), msg));
+        }
     }
 
+    // Choose which buffer to parse
+    let buffer_to_parse = dynamic_buffer.as_deref().unwrap_or(&buffer[..]);
+
     // 5. parse the header
-    let header = HeaderResult::parse(&buffer[..full_length]);
+    let header = HeaderResult::parse(&buffer_to_parse[..full_length]);
 
     match header {
         HeaderResult::V1(Ok(_header)) => Err(io::Error::new(
