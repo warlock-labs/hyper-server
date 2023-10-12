@@ -4,7 +4,7 @@
 //!
 //! ```rust,no_run
 //! use axum::{routing::get, Router};
-//! use axum_server::tls_rustls::RustlsConfig;
+//! use hyper_server::tls_rustls::RustlsConfig;
 //! use std::net::SocketAddr;
 //!
 //! #[tokio::main]
@@ -20,7 +20,7 @@
 //!
 //!     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 //!     println!("listening on {}", addr);
-//!     axum_server::bind_rustls(addr, config)
+//!     hyper_server::bind_rustls(addr, config)
 //!         .serve(app.into_make_service())
 //!         .await
 //!         .unwrap();
@@ -43,7 +43,7 @@ use tokio::{
 use tokio_rustls::server::TlsStream;
 
 pub(crate) mod export {
-    use super::*;
+    use super::{RustlsAcceptor, RustlsConfig, Server, SocketAddr};
 
     /// Create a tls server that will bind to provided address.
     #[cfg_attr(docsrs, doc(cfg(feature = "tls-rustls")))]

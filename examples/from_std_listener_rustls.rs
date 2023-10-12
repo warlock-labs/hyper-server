@@ -4,7 +4,7 @@
 //! To connect through browser, navigate to "https://localhost:3000" url.
 
 use axum::{routing::get, Router};
-use axum_server::tls_rustls::RustlsConfig;
+use hyper_server::tls_rustls::RustlsConfig;
 use std::net::{SocketAddr, TcpListener};
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = TcpListener::bind(addr).unwrap();
     println!("listening on {}", addr);
-    axum_server::from_tcp_rustls(listener, config)
+    hyper_server::from_tcp_rustls(listener, config)
         .serve(app.into_make_service())
         .await
         .unwrap();
