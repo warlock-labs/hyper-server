@@ -305,7 +305,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn start_and_request() {
-        let (_handle, _server_task, server_addr) = start_server(true, false).await;
+        let (_handle, _server_task, server_addr) = start_server(true).await;
 
         let addr = start_proxy(server_addr, true)
             .await
@@ -320,7 +320,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn server_receives_decoded_client_address() {
-        let (_handle, _server_task, server_addr) = start_server(true, true).await;
+        let (_handle, _server_task, server_addr) = start_server(true).await;
 
         let addr = start_proxy(server_addr, true)
             .await
@@ -328,15 +328,22 @@ pub(crate) mod tests {
 
         let (mut client, _conn, client_addr) = connect(addr).await;
 
-        let (_parts, body) = send_empty_request(&mut client).await;
-        let body_str = String::from_utf8(body.to_vec()).expect("Response body is not valid UTF-8");
+        let (parts, _body) = send_empty_request(&mut client).await;
 
-        assert_eq!(body_str, format!("for={}", client_addr));
+        // Check for the Forwarded header
+        let forwarded_header = parts
+            .headers
+            .get("Forwarded")
+            .expect("No Forwarded header present")
+            .to_str()
+            .expect("Failed to convert Forwarded header to str");
+
+        assert!(forwarded_header.contains(&format!("for={}", client_addr)));
     }
 
     #[tokio::test]
     async fn not_parsing_when_header_present_fails() {
-        let (_handle, _server_task, server_addr) = start_server(false, false).await;
+        let (_handle, _server_task, server_addr) = start_server(false).await;
 
         let addr = start_proxy(server_addr, true)
             .await
@@ -351,7 +358,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn parsing_when_header_not_present_fails() {
-        let (_handle, _server_task, server_addr) = start_server(true, false).await;
+        let (_handle, _server_task, server_addr) = start_server(true).await;
 
         let addr = start_proxy(server_addr, false)
             .await
@@ -377,28 +384,25 @@ pub(crate) mod tests {
     }
 
     pub(crate) async fn forward_ip_handler(req: Request<Body>) -> Response<Body> {
-        if let Some(header_value) = req.headers().get("forwarded") {
-            let header_value_str = header_value.to_str().unwrap().to_string(); // Clone the string
-            Response::new(Body::from(header_value_str))
-        } else {
-            Response::new(Body::from("Hello, world!"))
+        let mut response = Response::new(Body::from("Hello, world!"));
+
+        if let Some(header_value) = req.headers().get("Forwarded") {
+            response
+                .headers_mut()
+                .insert("Forwarded", header_value.clone());
         }
+
+        response
     }
 
     async fn start_server(
         parse_proxy_header: bool,
-        forward_ip: bool,
     ) -> (Handle, JoinHandle<io::Result<()>>, SocketAddr) {
         let handle = Handle::new();
 
         let server_handle = handle.clone();
         let server_task = tokio::spawn(async move {
-            let app;
-            if forward_ip {
-                app = Router::new().route("/", get(forward_ip_handler));
-            } else {
-                app = Router::new().route("/", get(|| async { "Hello, world!" }));
-            }
+            let app = Router::new().route("/", get(forward_ip_handler));
 
             let addr = SocketAddr::from(([127, 0, 0, 1], 0));
 
