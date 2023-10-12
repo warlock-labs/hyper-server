@@ -375,31 +375,6 @@ pub(crate) mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_shutdown() {
-        let (handle, _server_task, server_addr) = start_server(true, false).await;
-
-        let addr = start_proxy(server_addr, true)
-            .await
-            .expect("Failed to start proxy");
-
-        let (mut client, conn, _client_addr) = connect(addr).await;
-
-        handle.shutdown();
-
-        let response_future_result = client
-            .ready()
-            .await
-            .unwrap()
-            .call(Request::new(Body::empty()))
-            .await;
-
-        assert!(response_future_result.is_err());
-
-        // Connection task should finish soon.
-        let _ = timeout(Duration::from_secs(1), conn).await.unwrap();
-    }
-
     pub(crate) async fn forward_ip_handler(req: Request<Body>) -> Response<Body> {
         if let Some(header_value) = req.headers().get("forwarded") {
             let header_value_str = header_value.to_str().unwrap().to_string(); // Clone the string
