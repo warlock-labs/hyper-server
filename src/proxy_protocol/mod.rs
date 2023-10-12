@@ -180,7 +180,7 @@ where
     }
 
     fn call(&mut self, mut req: Request<B>) -> Self::Future {
-        let forwarded_string = match self.client_address {
+        let mut forwarded_string = match self.client_address {
             Some(socket_addr) => match socket_addr {
                 SocketAddr::V4(addr) => {
                     format!("for={}:{}", addr.ip(), addr.port())
@@ -191,6 +191,14 @@ where
             },
             None => "for=unknown".to_string(),
         };
+
+        if let Some(existing_value) = req.headers_mut().get("Forwarded") {
+            forwarded_string = format!(
+                "{}, {}",
+                existing_value.to_str().unwrap_or(""),
+                &forwarded_string
+            );
+        }
 
         if let Ok(header_value) = HeaderValue::from_str(&forwarded_string) {
             req.headers_mut().insert("Forwarded", header_value);
