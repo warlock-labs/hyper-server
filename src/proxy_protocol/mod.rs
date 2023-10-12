@@ -118,14 +118,12 @@ where
             let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
             return Err(io::Error::new(e.kind(), msg));
         }
-    } else {
-        if let Err(e) = stream
-            .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
-            .await
-        {
-            let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
-            return Err(io::Error::new(e.kind(), msg));
-        }
+    } else if let Err(e) = stream
+        .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
+        .await
+    {
+        let msg = format!("Stream `read_exact` error: {}. Not able to read enough bytes to read the full V2 Proxy Protocol header.", e);
+        return Err(io::Error::new(e.kind(), msg));
     }
 
     // Choose which buffer to parse
