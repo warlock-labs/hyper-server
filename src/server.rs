@@ -31,6 +31,8 @@ pub struct Server<A = DefaultAcceptor> {
     addr_incoming_conf: AddrIncomingConfig,
     handle: Handle,
     http_conf: HttpConfig,
+    #[cfg(feature = "proxy-protocol")]
+    proxy_acceptor_set: bool,
 }
 
 #[derive(Debug)]
@@ -61,6 +63,8 @@ impl Server {
             addr_incoming_conf: AddrIncomingConfig::default(),
             handle,
             http_conf: HttpConfig::default(),
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: false,
         }
     }
 
@@ -75,6 +79,8 @@ impl Server {
             addr_incoming_conf: AddrIncomingConfig::default(),
             handle,
             http_conf: HttpConfig::default(),
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: false,
         }
     }
 }
@@ -82,12 +88,19 @@ impl Server {
 impl<A> Server<A> {
     /// Overwrite acceptor.
     pub fn acceptor<Acceptor>(self, acceptor: Acceptor) -> Server<Acceptor> {
+        #[cfg(feature = "proxy-protocol")]
+        if self.proxy_acceptor_set {
+            panic!("Overwriting the acceptor after proxy protocol is enabled is not supported. Configure the acceptor first in the builder, then enable proxy protocol.");
+        }
+
         Server {
             acceptor,
             listener: self.listener,
             addr_incoming_conf: self.addr_incoming_conf,
             handle: self.handle,
             http_conf: self.http_conf,
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: self.proxy_acceptor_set,
         }
     }
 
@@ -103,6 +116,7 @@ impl<A> Server<A> {
             addr_incoming_conf: self.addr_incoming_conf,
             handle: self.handle,
             http_conf: self.http_conf,
+            proxy_acceptor_set: true,
         }
     }
 
@@ -117,6 +131,8 @@ impl<A> Server<A> {
             addr_incoming_conf: self.addr_incoming_conf,
             handle: self.handle,
             http_conf: self.http_conf,
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: self.proxy_acceptor_set,
         }
     }
 

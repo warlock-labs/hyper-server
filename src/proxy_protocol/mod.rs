@@ -49,7 +49,7 @@ use tokio::{
 };
 use tower_service::Service;
 
-pub mod future;
+pub(crate) mod future;
 use self::future::ProxyProtocolAcceptorFuture;
 
 const V1_PREFIX_LEN: usize = 5;
