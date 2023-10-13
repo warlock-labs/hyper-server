@@ -93,8 +93,8 @@ impl<A> Server<A> {
 
     /// Maps the current acceptor to a new type.
     pub fn map<Acceptor, F>(self, acceptor: F) -> Server<Acceptor>
-        where
-            F: FnOnce(A) -> Acceptor,
+    where
+        F: FnOnce(A) -> Acceptor,
     {
         Server {
             acceptor: acceptor(self.acceptor),
@@ -150,12 +150,12 @@ impl<A> Server<A> {
     ///   It's worth noting that this error scenario doesn't typically occur with `axum` make services.
     ///
     pub async fn serve<M>(self, mut make_service: M) -> io::Result<()>
-        where
-            M: MakeServiceRef<AddrStream, Request<hyper::Body>>,
-            A: Accept<AddrStream, M::Service> + Clone + Send + Sync + 'static,
-            A::Stream: AsyncRead + AsyncWrite + Unpin + Send,
-            A::Service: SendService<Request<hyper::Body>> + Send,
-            A::Future: Send,
+    where
+        M: MakeServiceRef<AddrStream, Request<hyper::Body>>,
+        A: Accept<AddrStream, M::Service> + Clone + Send + Sync + 'static,
+        A::Stream: AsyncRead + AsyncWrite + Unpin + Send,
+        A::Service: SendService<Request<hyper::Body>> + Send,
+        A::Future: Send,
     {
         // Extract relevant fields from `self` for easier access.
         let acceptor = self.acceptor;
@@ -180,10 +180,10 @@ impl<A> Server<A> {
             loop {
                 // Wait for a new connection or for the server to be signaled to shut down.
                 let addr_stream = tokio::select! {
-                biased;
-                result = accept(&mut incoming) => result?,
-                _ = handle.wait_graceful_shutdown() => return Ok(()),
-            };
+                    biased;
+                    result = accept(&mut incoming) => result?,
+                    _ = handle.wait_graceful_shutdown() => return Ok(()),
+                };
 
                 // Ensure the `make_service` is ready to produce another service.
                 poll_fn(|cx| make_service.poll_ready(cx))
@@ -203,7 +203,8 @@ impl<A> Server<A> {
 
                 // Spawn a new task to handle the connection.
                 tokio::spawn(async move {
-                    if let Ok((stream, send_service)) = acceptor.accept(addr_stream, service).await {
+                    if let Ok((stream, send_service)) = acceptor.accept(addr_stream, service).await
+                    {
                         let service = send_service.into_service();
 
                         let mut serve_future = http_conf
@@ -213,19 +214,19 @@ impl<A> Server<A> {
 
                         // Wait for either the server to be shut down or the connection to finish.
                         tokio::select! {
-                        biased;
-                        _ = watcher.wait_graceful_shutdown() => {
-                            // Initiate a graceful shutdown.
-                            Pin::new(&mut serve_future).graceful_shutdown();
-                            tokio::select! {
-                                biased;
-                                _ = watcher.wait_shutdown() => (),
-                                _ = &mut serve_future => (),
+                            biased;
+                            _ = watcher.wait_graceful_shutdown() => {
+                                // Initiate a graceful shutdown.
+                                Pin::new(&mut serve_future).graceful_shutdown();
+                                tokio::select! {
+                                    biased;
+                                    _ = watcher.wait_shutdown() => (),
+                                    _ = &mut serve_future => (),
+                                }
                             }
+                            _ = watcher.wait_shutdown() => (),
+                            _ = &mut serve_future => (),
                         }
-                        _ = watcher.wait_shutdown() => (),
-                        _ = &mut serve_future => (),
-                    }
                     }
                     // TODO: Consider logging or handling any errors that occur during acceptance.
                 });
@@ -234,10 +235,10 @@ impl<A> Server<A> {
 
         // Wait for either the server to be fully shut down or an error to occur.
         let result = tokio::select! {
-        biased;
-        _ = handle.wait_shutdown() => return Ok(()),
-        result = accept_loop_future => result,
-    };
+            biased;
+            _ = handle.wait_shutdown() => return Ok(()),
+            result = accept_loop_future => result,
+        };
 
         // Handle potential errors.
         // TODO: Consider removing the Clippy annotation by restructuring this error handling.

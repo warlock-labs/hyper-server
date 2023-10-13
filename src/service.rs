@@ -18,12 +18,12 @@ use tower_service::Service;
 #[allow(missing_docs)]
 pub trait SendService<Request>: send_service::Sealed<Request> {
     type Service: Service<
-        Request,
-        Response = Response<Self::Body>,
-        Error = Self::Error,
-        Future = Self::Future,
-    > + Send
-    + 'static;
+            Request,
+            Response = Response<Self::Body>,
+            Error = Self::Error,
+            Future = Self::Future,
+        > + Send
+        + 'static;
 
     type Body: Body<Data = Self::BodyData, Error = Self::BodyError> + Send + 'static;
     type BodyData: Send + 'static;
@@ -37,24 +37,24 @@ pub trait SendService<Request>: send_service::Sealed<Request> {
 }
 
 impl<T, B, Request> send_service::Sealed<Request> for T
-    where
-        T: Service<Request, Response = Response<B>>,
-        T::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        T::Future: Send + 'static,
-        B: Body + Send + 'static,
-        B::Data: Send + 'static,
-        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+where
+    T: Service<Request, Response = Response<B>>,
+    T::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    T::Future: Send + 'static,
+    B: Body + Send + 'static,
+    B::Data: Send + 'static,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
 }
 
 impl<T, B, Request> SendService<Request> for T
-    where
-        T: Service<Request, Response = Response<B>> + Send + 'static,
-        T::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        T::Future: Send + 'static,
-        B: Body + Send + 'static,
-        B::Data: Send + 'static,
-        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+where
+    T: Service<Request, Response = Response<B>> + Send + 'static,
+    T::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    T::Future: Send + 'static,
+    B: Body + Send + 'static,
+    B::Data: Send + 'static,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     type Service = T;
 
@@ -81,12 +81,12 @@ impl<T, B, Request> SendService<Request> for T
 #[allow(missing_docs)]
 pub trait MakeServiceRef<Target, Request>: make_service_ref::Sealed<(Target, Request)> {
     type Service: Service<
-        Request,
-        Response = Response<Self::Body>,
-        Error = Self::Error,
-        Future = Self::Future,
-    > + Send
-    + 'static;
+            Request,
+            Response = Response<Self::Body>,
+            Error = Self::Error,
+            Future = Self::Future,
+        > + Send
+        + 'static;
 
     type Body: Body<Data = Self::BodyData, Error = Self::BodyError> + Send + 'static;
     type BodyData: Send + 'static;
@@ -106,30 +106,30 @@ pub trait MakeServiceRef<Target, Request>: make_service_ref::Sealed<(Target, Req
 }
 
 impl<T, S, B, E, F, Target, Request> make_service_ref::Sealed<(Target, Request)> for T
-    where
-        T: for<'a> Service<&'a Target, Response = S, Error = E, Future = F>,
-        S: Service<Request, Response = Response<B>> + Send + 'static,
-        S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        S::Future: Send + 'static,
-        B: Body + Send + 'static,
-        B::Data: Send + 'static,
-        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
-        F: Future<Output = Result<S, E>>,
+where
+    T: for<'a> Service<&'a Target, Response = S, Error = E, Future = F>,
+    S: Service<Request, Response = Response<B>> + Send + 'static,
+    S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    S::Future: Send + 'static,
+    B: Body + Send + 'static,
+    B::Data: Send + 'static,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    F: Future<Output = Result<S, E>>,
 {
 }
 
 impl<T, S, B, E, F, Target, Request> MakeServiceRef<Target, Request> for T
-    where
-        T: for<'a> Service<&'a Target, Response = S, Error = E, Future = F>,
-        S: Service<Request, Response = Response<B>> + Send + 'static,
-        S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        S::Future: Send + 'static,
-        B: Body + Send + 'static,
-        B::Data: Send + 'static,
-        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        E: Into<Box<dyn std::error::Error + Send + Sync>>,
-        F: Future<Output = Result<S, E>>,
+where
+    T: for<'a> Service<&'a Target, Response = S, Error = E, Future = F>,
+    S: Service<Request, Response = Response<B>> + Send + 'static,
+    S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    S::Future: Send + 'static,
+    B: Body + Send + 'static,
+    B::Data: Send + 'static,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    E: Into<Box<dyn std::error::Error + Send + Sync>>,
+    F: Future<Output = Result<S, E>>,
 {
     type Service = S;
 
