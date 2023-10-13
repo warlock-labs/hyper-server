@@ -338,7 +338,7 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 /// Returns an `io::Error` with the kind set to `Other` and the provided error as its cause.
 ///
 pub(crate) fn io_other<E: Into<BoxError>>(error: E) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, error)
+    io::Error::new(ErrorKind::Other, error)
 }
 
 #[cfg(test)]
