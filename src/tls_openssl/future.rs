@@ -1,4 +1,8 @@
 //! Future types.
+//!
+//! This module provides the futures and supporting types for integrating OpenSSL with a hyper/tokio HTTP/TLS server.
+//! `OpenSSLAcceptorFuture` is the main public-facing type which wraps around the core logic of establishing an SSL/TLS
+//! connection.
 
 use super::OpenSSLConfig;
 use pin_project_lite::pin_project;
@@ -17,16 +21,26 @@ use tokio::time::{timeout, Timeout};
 use openssl::ssl::Ssl;
 use tokio_openssl::SslStream;
 
+// The OpenSSLAcceptorFuture encapsulates the asynchronous logic of accepting an SSL/TLS connection.
 pin_project! {
-    /// Future type for [`OpenSSLAcceptor`](crate::tls_openssl::OpenSSLAcceptor).
+    /// A Future for establishing an SSL/TLS connection using `OpenSSLAcceptor`.
+    ///
+    /// This wraps around the process of asynchronously establishing an SSL/TLS connection via OpenSSL.
+    /// It waits for the inner non-TLS connection to be established, and then handles the TLS handshake.
     pub struct OpenSSLAcceptorFuture<F, I, S> {
         #[pin]
-        inner: AcceptFuture<F, I, S>,
-        config: Option<OpenSSLConfig>,
+        inner: AcceptFuture<F, I, S>, // Inner future which manages the state machine of accepting connections.
+        config: Option<OpenSSLConfig>, // The SSL/TLS configuration to use for the handshake.
     }
 }
 
 impl<F, I, S> OpenSSLAcceptorFuture<F, I, S> {
+    /// Constructs a new `OpenSSLAcceptorFuture`.
+    ///
+    /// # Arguments
+    /// - `future`: The initial future that handles the non-TLS accept phase.
+    /// - `config`: SSL/TLS configuration.
+    /// - `handshake_timeout`: Maximum duration allowed for the TLS handshake.
     pub(crate) fn new(future: F, config: OpenSSLConfig, handshake_timeout: Duration) -> Self {
         let inner = AcceptFuture::InnerAccepting {
             future,
@@ -44,18 +58,19 @@ impl<F, I, S> fmt::Debug for OpenSSLAcceptorFuture<F, I, S> {
     }
 }
 
+// A future for performing the SSL/TLS handshake using an `SslStream`.
 pin_project! {
     struct TlsAccept<I> {
         #[pin]
-        tls_stream: Option<SslStream<I>>,
+        tls_stream: Option<SslStream<I>>, // The SSL/TLS stream on which the handshake will be performed.
     }
 }
 
 impl<I> Future for TlsAccept<I>
 where
-    I: AsyncRead + AsyncWrite + Unpin,
+    I: AsyncRead + AsyncWrite + Unpin, // The inner type must support asynchronous reading and writing.
 {
-    type Output = io::Result<SslStream<I>>;
+    type Output = io::Result<SslStream<I>>; // The result will be an `SslStream` if the handshake is successful.
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
@@ -69,7 +84,6 @@ where
         {
             Poll::Ready(Ok(())) => {
                 let tls_stream = this.tls_stream.take().expect("tls stream vanished?");
-
                 Poll::Ready(Ok(tls_stream))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Err(Error::new(ErrorKind::Other, e))),
@@ -78,46 +92,38 @@ where
     }
 }
 
+// Enumerates the possible states of the accept process, either waiting for the inner non-TLS
+// connection to be accepted, or performing the TLS handshake.
 pin_project! {
     #[project = AcceptFutureProj]
     enum AcceptFuture<F, I, S> {
-        // We are waiting on the inner (lower) future to complete accept()
-        // so that we can begin installing TLS into the channel.
+        // Waiting for the non-TLS connection to be accepted.
         InnerAccepting {
             #[pin]
-            future: F,
-            handshake_timeout: Duration,
+            future: F,               // The future representing the non-TLS accept phase.
+            handshake_timeout: Duration, // Maximum duration for the TLS handshake.
         },
-        // We are waiting for TLS to install into the channel so that we can
-        // proceed to return the SslStream.
+        // Performing the TLS handshake.
         TlsAccepting {
             #[pin]
-            future: Timeout< TlsAccept<I> >,
-            service: Option<S>,
+            future: Timeout<TlsAccept<I>>, // Future that represents the TLS handshake, with a timeout.
+            service: Option<S>,      // The underlying service that will handle the request after the TLS handshake.
         }
     }
 }
 
+// Main implementation of the future for `OpenSSLAcceptor`.
 impl<F, I, S> Future for OpenSSLAcceptorFuture<F, I, S>
 where
-    F: Future<Output = io::Result<(I, S)>>,
-    I: AsyncRead + AsyncWrite + Unpin,
+    F: Future<Output = io::Result<(I, S)>>, // The initial non-TLS accept future.
+    I: AsyncRead + AsyncWrite + Unpin, // The inner type must support asynchronous reading and writing.
 {
-    type Output = io::Result<(SslStream<I>, S)>;
+    type Output = io::Result<(SslStream<I>, S)>; // The output will be an `SslStream` and the service to handle the request.
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
 
-        // The inner future here is what is doing the lower level accept, such as
-        // our tcp socket.
-        //
-        // So we poll on that first, when it's ready we then swap our the inner future to
-        // one waiting for our ssl layer to accept/install.
-        //
-        // Then once that's ready we can then wrap and provide the SslStream back out.
-
-        // This loop exists to allow the Poll::Ready from InnerAccept on complete
-        // to re-poll immediately. Otherwise all other paths are immediate returns.
+        // This loop advances the state machine
         loop {
             match this.inner.as_mut().project() {
                 AcceptFutureProj::InnerAccepting {
@@ -154,7 +160,6 @@ where
                 AcceptFutureProj::TlsAccepting { future, service } => match future.poll(cx) {
                     Poll::Ready(Ok(Ok(stream))) => {
                         let service = service.take().expect("future polled after ready");
-
                         return Poll::Ready(Ok((stream, service)));
                     }
                     Poll::Ready(Ok(Err(e))) => return Poll::Ready(Err(e)),

@@ -31,24 +31,40 @@ use crate::{
     accept::{Accept, DefaultAcceptor},
     server::Server,
 };
-use openssl::ssl::Error as OpenSSLError;
-use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslFiletype, SslMethod};
+use openssl::ssl::{
+    Error as OpenSSLError, SslAcceptor, SslAcceptorBuilder, SslFiletype, SslMethod,
+};
 use std::{convert::TryFrom, fmt, net::SocketAddr, path::Path, sync::Arc, time::Duration};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_openssl::SslStream;
 
 pub mod future;
 
-/// Create a TLS server that will be bound to the provided socket with a configuration. See
-/// the [`crate::tls_openssl`] module for more details.
+/// Binds a TLS server using OpenSSL to the specified address with the given configuration.
+///
+/// The server is configured to accept TLS encrypted connections.
+///
+/// # Arguments
+///
+/// * `addr`: The address to which the server will bind.
+/// * `config`: The TLS configuration for the server.
+///
+/// # Returns
+///
+/// A configured `Server` instance ready to be run.
 pub fn bind_openssl(addr: SocketAddr, config: OpenSSLConfig) -> Server<OpenSSLAcceptor> {
     let acceptor = OpenSSLAcceptor::new(config);
-
     Server::bind(addr).acceptor(acceptor)
 }
 
-/// Tls acceptor that uses OpenSSL. For details on how to use this see [`crate::tls_openssl`] module
-/// for more details.
+/// Represents a TLS acceptor that uses OpenSSL for cryptographic operations.
+///
+/// This structure is used for handling TLS encrypted connections.
+///
+/// The acceptor is backed by OpenSSL, and is used to upgrade incoming non-secure connections
+/// to secure TLS connections.
+///
+/// The default TLS handshake timeout is set to 10 seconds.
 #[derive(Clone)]
 pub struct OpenSSLAcceptor<A = DefaultAcceptor> {
     inner: A,
@@ -57,16 +73,19 @@ pub struct OpenSSLAcceptor<A = DefaultAcceptor> {
 }
 
 impl OpenSSLAcceptor {
-    /// Create a new OpenSSL acceptor based on the provided [`OpenSSLConfig`]. This is
-    /// generally used with manual calls to [`Server::bind`]. You may want [`bind_openssl`]
-    /// instead.
+    /// Constructs a new instance of the OpenSSL acceptor.
+    ///
+    /// # Arguments
+    ///
+    /// * `config`: Configuration options for the OpenSSL server.
     pub fn new(config: OpenSSLConfig) -> Self {
         let inner = DefaultAcceptor::new();
 
+        // Default handshake timeout is 10 seconds.
         #[cfg(not(test))]
         let handshake_timeout = Duration::from_secs(10);
 
-        // Don't force tests to wait too long.
+        // For tests, use a shorter timeout to avoid unnecessary delays.
         #[cfg(test)]
         let handshake_timeout = Duration::from_secs(1);
 
@@ -77,7 +96,15 @@ impl OpenSSLAcceptor {
         }
     }
 
-    /// Override the default TLS handshake timeout of 10 seconds.
+    /// Overrides the default TLS handshake timeout.
+    ///
+    /// # Arguments
+    ///
+    /// * `val`: The duration to set as the new handshake timeout.
+    ///
+    /// # Returns
+    ///
+    /// A modified version of the current acceptor with the new timeout value.
     pub fn handshake_timeout(mut self, val: Duration) -> Self {
         self.handshake_timeout = val;
         self
@@ -93,6 +120,7 @@ where
     type Service = A::Service;
     type Future = OpenSSLAcceptorFuture<A::Future, A::Stream, A::Service>;
 
+    /// Handles the incoming stream, initiates a TLS handshake, and upgrades it to a secure connection.
     fn accept(&self, stream: I, service: S) -> Self::Future {
         let inner_future = self.inner.accept(stream, service);
         let config = self.config.clone();
@@ -107,15 +135,25 @@ impl<A> fmt::Debug for OpenSSLAcceptor<A> {
     }
 }
 
-/// OpenSSL configuration.
+/// Represents configuration options for an OpenSSL-based server.
+///
+/// This configuration is used when constructing a new `OpenSSLAcceptor`.
 #[derive(Clone)]
 pub struct OpenSSLConfig {
     acceptor: Arc<SslAcceptor>,
 }
 
 impl OpenSSLConfig {
-    /// This helper will established a TLS server based on strong cipher suites
-    /// from a PEM formatted certificate and key.
+    /// Creates a new configuration using a PEM formatted certificate and key.
+    ///
+    /// # Arguments
+    ///
+    /// * `cert`: Path to the PEM-formatted certificate file.
+    /// * `key`: Path to the PEM-formatted private key file.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` that contains an `OpenSSLConfig` or an `OpenSSLError`.
     pub fn from_pem_file<A: AsRef<Path>, B: AsRef<Path>>(
         cert: A,
         key: B,
@@ -123,9 +161,7 @@ impl OpenSSLConfig {
         let mut tls_builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls())?;
 
         tls_builder.set_certificate_file(cert, SslFiletype::PEM)?;
-
         tls_builder.set_private_key_file(key, SslFiletype::PEM)?;
-
         tls_builder.check_private_key()?;
 
         let acceptor = Arc::new(tls_builder.build());
@@ -133,8 +169,16 @@ impl OpenSSLConfig {
         Ok(OpenSSLConfig { acceptor })
     }
 
-    /// This helper will established a TLS server based on strong cipher suites
-    /// from a PEM formatted certificate chain and key.
+    /// Creates a new configuration using a PEM formatted certificate chain and key.
+    ///
+    /// # Arguments
+    ///
+    /// * `chain`: Path to the PEM-formatted certificate chain file.
+    /// * `key`: Path to the PEM-formatted private key file.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` that contains an `OpenSSLConfig` or an `OpenSSLError`.
     pub fn from_pem_chain_file<A: AsRef<Path>, B: AsRef<Path>>(
         chain: A,
         key: B,
@@ -142,9 +186,7 @@ impl OpenSSLConfig {
         let mut tls_builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls())?;
 
         tls_builder.set_certificate_chain_file(chain)?;
-
         tls_builder.set_private_key_file(key, SslFiletype::PEM)?;
-
         tls_builder.check_private_key()?;
 
         let acceptor = Arc::new(tls_builder.build());
@@ -156,32 +198,13 @@ impl OpenSSLConfig {
 impl TryFrom<SslAcceptorBuilder> for OpenSSLConfig {
     type Error = OpenSSLError;
 
-    /// Build the [`OpenSSLConfig`] from an [`SslAcceptorBuilder`]. This allows precise
-    /// control over the settings that will be used by OpenSSL in this server.
+    /// Constructs an `OpenSSLConfig` from an `SslAcceptorBuilder`.
     ///
-    /// # Example
-    /// ```
-    /// use hyper_server::tls_openssl::OpenSSLConfig;
-    /// use openssl::ssl::{SslAcceptor, SslMethod};
-    /// use std::convert::TryFrom;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let mut tls_builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls())
-    ///         .unwrap();
-    ///     // Set configurations like set_certificate_chain_file or
-    ///     // set_private_key_file.
-    ///     // let tls_builder.set_ ... ;
-
-    ///     let _config = OpenSSLConfig::try_from(tls_builder);
-    /// }
-    /// ```
+    /// This conversion allows for finer control over the TLS settings when creating
+    /// the configuration.
     fn try_from(tls_builder: SslAcceptorBuilder) -> Result<Self, Self::Error> {
-        // Any other checks?
         tls_builder.check_private_key()?;
-
         let acceptor = Arc::new(tls_builder.build());
-
         Ok(OpenSSLConfig { acceptor })
     }
 }
