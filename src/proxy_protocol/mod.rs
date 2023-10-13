@@ -91,7 +91,8 @@ where
         // 2. Read until terminator found
         let mut end_found = false;
         for i in V1_PREFIX_LEN..V1_MAX_LENGTH {
-            stream.read_exact(&mut buffer[i..i + 1]).await?;
+            // read one byte at a time
+            buffer[i] = stream.read_u8().await?;
 
             if [buffer[i - 1], buffer[i]] == V1_TERMINATOR {
                 end_found = true;
