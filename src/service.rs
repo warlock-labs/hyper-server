@@ -1,4 +1,5 @@
-//! Service traits.
+//! Module containing service traits.
+//! These traits are vital for handling requests and creating services within the server.
 
 use http::Response;
 use http_body::Body;
@@ -8,9 +9,12 @@ use std::{
 };
 use tower_service::Service;
 
-/// Trait alias for [`Service`] with bounds required for [`serve`](crate::server::Server::serve).
+// TODO(Document the types here to disable the clippy annotation)
+
+/// An alias trait for the [`Service`] trait, specialized with required bounds for the server's service function.
+/// This trait has been sealed, ensuring it cannot be implemented by types outside of this crate.
 ///
-/// This trait is sealed and cannot be implemented for types outside this crate.
+/// It provides constraints for the body data, errors, and asynchronous behavior that fits the server's needs.
 #[allow(missing_docs)]
 pub trait SendService<Request>: send_service::Sealed<Request> {
     type Service: Service<
@@ -26,9 +30,9 @@ pub trait SendService<Request>: send_service::Sealed<Request> {
     type BodyError: Into<Box<dyn std::error::Error + Send + Sync>>;
 
     type Error: Into<Box<dyn std::error::Error + Send + Sync>>;
-
     type Future: Future<Output = Result<Response<Self::Body>, Self::Error>> + Send + 'static;
 
+    /// Convert this type into a service.
     fn into_service(self) -> Self::Service;
 }
 
@@ -67,10 +71,11 @@ where
     }
 }
 
-/// Modified version of [`MakeService`] that takes a `&Target` and has required trait bounds for
-/// [`serve`](crate::server::Server::serve).
+/// A variant of the [`MakeService`] trait that accepts a `&Target` reference.
+/// This trait has been sealed, ensuring it cannot be implemented by types outside of this crate.
+/// It is specifically designed for the server's `serve` function.
 ///
-/// This trait is sealed and cannot be implemented for types outside this crate.
+/// This trait provides a mechanism to create services upon request, with the required trait bounds.
 ///
 /// [`MakeService`]: https://docs.rs/tower/0.4/tower/make/trait.MakeService.html
 #[allow(missing_docs)]
@@ -88,14 +93,15 @@ pub trait MakeServiceRef<Target, Request>: make_service_ref::Sealed<(Target, Req
     type BodyError: Into<Box<dyn std::error::Error + Send + Sync>>;
 
     type Error: Into<Box<dyn std::error::Error + Send + Sync>>;
-
     type Future: Future<Output = Result<Response<Self::Body>, Self::Error>> + Send + 'static;
 
     type MakeError: Into<Box<dyn std::error::Error + Send + Sync>>;
     type MakeFuture: Future<Output = Result<Self::Service, Self::MakeError>>;
 
+    /// Polls to check if the service factory is ready to create a service.
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::MakeError>>;
 
+    /// Creates and returns a service for the provided target.
     fn make_service(&mut self, target: &Target) -> Self::MakeFuture;
 }
 
@@ -147,6 +153,8 @@ where
     }
 }
 
+// Sealed traits prevent external implementations of our core traits.
+// This provides future compatibility guarantees.
 mod send_service {
     pub trait Sealed<T> {}
 }
