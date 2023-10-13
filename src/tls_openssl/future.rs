@@ -123,7 +123,16 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
 
-        // This loop advances the state machine
+        // The inner future here is what is doing the lower level accept, such as
+        // our tcp socket.
+        //
+        // So we poll on that first, when it's ready we then swap our the inner future to
+        // one waiting for our ssl layer to accept/install.
+        //
+        // Then once that's ready we can then wrap and provide the SslStream back out.
+
+        // This loop exists to allow the Poll::Ready from InnerAccept on complete
+        // to re-poll immediately. Otherwise all other paths are immediate returns.
         loop {
             match this.inner.as_mut().project() {
                 AcceptFutureProj::InnerAccepting {

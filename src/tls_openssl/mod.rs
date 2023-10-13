@@ -198,10 +198,26 @@ impl OpenSSLConfig {
 impl TryFrom<SslAcceptorBuilder> for OpenSSLConfig {
     type Error = OpenSSLError;
 
-    /// Constructs an `OpenSSLConfig` from an `SslAcceptorBuilder`.
+    /// Constructs [`OpenSSLConfig`] from an [`SslAcceptorBuilder`]. This allows precise
+    /// control over the settings that will be used by OpenSSL in this server.
     ///
-    /// This conversion allows for finer control over the TLS settings when creating
-    /// the configuration.
+    /// # Example
+    /// ```
+    /// use hyper_server::tls_openssl::OpenSSLConfig;
+    /// use openssl::ssl::{SslAcceptor, SslMethod};
+    /// use std::convert::TryFrom;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let mut tls_builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls())
+    ///         .unwrap();
+    ///     // Set configurations like set_certificate_chain_file or
+    ///     // set_private_key_file.
+    ///     // let tls_builder.set_ ... ;
+
+    ///     let _config = OpenSSLConfig::try_from(tls_builder);
+    /// }
+    /// ```
     fn try_from(tls_builder: SslAcceptorBuilder) -> Result<Self, Self::Error> {
         tls_builder.check_private_key()?;
         let acceptor = Arc::new(tls_builder.build());

@@ -112,21 +112,18 @@ where
                         Poll::Pending => return Poll::Pending,
                     }
                 }
-                AcceptFutureProj::Accept { future, service } => {
-                    // TODO(DRY this code with openssl acceptor)
-                    // Poll the asynchronous handshake.
-                    match future.poll(cx) {
-                        Poll::Ready(Ok(Ok(stream))) => {
-                            let service = service.take().expect("future polled after ready");
-                            return Poll::Ready(Ok((stream, service)));
-                        }
-                        Poll::Ready(Ok(Err(e))) => return Poll::Ready(Err(e)),
-                        Poll::Ready(Err(timeout)) => {
-                            return Poll::Ready(Err(Error::new(ErrorKind::TimedOut, timeout)))
-                        }
-                        Poll::Pending => return Poll::Pending,
+                AcceptFutureProj::Accept { future, service } => match future.poll(cx) {
+                    Poll::Ready(Ok(Ok(stream))) => {
+                        let service = service.take().expect("future polled after ready");
+
+                        return Poll::Ready(Ok((stream, service)));
                     }
-                }
+                    Poll::Ready(Ok(Err(e))) => return Poll::Ready(Err(e)),
+                    Poll::Ready(Err(timeout)) => {
+                        return Poll::Ready(Err(Error::new(ErrorKind::TimedOut, timeout)))
+                    }
+                    Poll::Pending => return Poll::Pending,
+                },
             }
         }
     }
