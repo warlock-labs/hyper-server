@@ -24,7 +24,8 @@
 //!    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 //!    println!("listening on {}", addr);
 //!
-//!    // Can configure if you want different from the default of 5 seconds, otherwise None.
+//!    // Can configure if you want different from the default of 5 seconds,
+//!    // otherwise passing `None` will use the default.
 //!    let proxy_header_timeout = Some(Duration::from_secs(2));
 //!
 //!    hyper_server::bind(addr)

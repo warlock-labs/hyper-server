@@ -1,6 +1,7 @@
 //! Future types.
 use crate::accept::Accept;
 use crate::proxy_protocol::ForwardClientIp;
+use pin_project_lite::pin_project;
 use std::{
     fmt,
     future::Future,
@@ -9,7 +10,6 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-use pin_project_lite::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::Timeout;
 
