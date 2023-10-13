@@ -13,11 +13,12 @@ use hyper::server::{
     accept::Accept as HyperAccept,
     conn::{AddrIncoming, AddrStream},
 };
+#[cfg(feature = "proxy-protocol")]
+use std::time::Duration;
 use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
     pin::Pin,
-    time::Duration,
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},

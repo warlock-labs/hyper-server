@@ -79,64 +79,23 @@ pub(crate) async fn read_proxy_header<I>(
 where
     I: AsyncRead + Unpin,
 {
-    // mutable buffer for storing stream data
+    // Mutable buffer for storing stream data
     let mut buffer = [0; READ_BUFFER_LEN];
+    // Dynamic in case v2 header is too long
     let mut dynamic_buffer = None;
-    let mut full_length = 0;
 
-    // 1. Read prefix to check for v1, v2, or kill
+    // Read prefix to check for v1, v2, or kill
     stream.read_exact(&mut buffer[..V1_PREFIX_LEN]).await?;
 
     if &buffer[..V1_PREFIX_LEN] == v1::PROTOCOL_PREFIX.as_bytes() {
-        // 2. Read until terminator found
-        let mut end_found = false;
-        for i in V1_PREFIX_LEN..V1_MAX_LENGTH {
-            // read one byte at a time
-            buffer[i] = stream.read_u8().await?;
-
-            if [buffer[i - 1], buffer[i]] == V1_TERMINATOR {
-                end_found = true;
-                full_length = i + 1;
-                break;
-            }
-        }
-        if !end_found {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "No valid Proxy Protocol header detected",
-            ));
-        }
+        read_v1_header(&mut stream, &mut buffer).await?;
     } else {
-        // read further in to get v2 prefix
         stream
             .read_exact(&mut buffer[V1_PREFIX_LEN..V2_MINIMUM_LEN])
             .await?;
-
         if &buffer[..V2_PREFIX_LEN] == v2::PROTOCOL_PREFIX {
-            // 2. Decode the v2 header length
-            let length =
-                u16::from_be_bytes([buffer[V2_LENGTH_INDEX], buffer[V2_LENGTH_INDEX + 1]]) as usize;
-            full_length = V2_MINIMUM_LEN + length;
-
-            // Switch to dynamic buffer if header is too long. V2 has no maximum length.
-            if full_length > READ_BUFFER_LEN {
-                let mut vec = Vec::with_capacity(full_length);
-                vec.extend_from_slice(&buffer[..V2_MINIMUM_LEN]);
-                dynamic_buffer = Some(vec);
-            }
-
-            // 3. Read the remaining header length
-            if let Some(ref mut vec) = dynamic_buffer {
-                stream
-                    .read_exact(&mut vec[V2_MINIMUM_LEN..full_length])
-                    .await?;
-            } else {
-                stream
-                    .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
-                    .await?;
-            }
+            dynamic_buffer = read_v2_header(&mut stream, &mut buffer).await?;
         } else {
-            // kill
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "No valid Proxy Protocol header detected",
@@ -144,10 +103,11 @@ where
         }
     }
 
-    // 4. parse the header
-    let buffer_to_parse = dynamic_buffer.as_deref().unwrap_or(&buffer[..]); // Choose which buffer to parse
-    let header = HeaderResult::parse(&buffer_to_parse[..full_length]);
+    // Choose which buffer to parse
+    let buffer = dynamic_buffer.as_deref().unwrap_or(&buffer[..]);
 
+    // Parse the header
+    let header = HeaderResult::parse(buffer);
     match header {
         HeaderResult::V1(Ok(header)) => {
             let client_address = match header.addresses {
@@ -199,6 +159,65 @@ where
             "No valid V2 Proxy Protocol header received",
         )),
     }
+}
+
+async fn read_v2_header<I>(
+    mut stream: I,
+    buffer: &mut [u8; READ_BUFFER_LEN],
+) -> Result<Option<Vec<u8>>, io::Error>
+where
+    I: AsyncRead + Unpin,
+{
+    let length =
+        u16::from_be_bytes([buffer[V2_LENGTH_INDEX], buffer[V2_LENGTH_INDEX + 1]]) as usize;
+    let full_length = V2_MINIMUM_LEN + length;
+
+    // Switch to dynamic buffer if header is too long; v2 has no maximum length
+    if full_length > READ_BUFFER_LEN {
+        let mut dynamic_buffer = Vec::with_capacity(full_length);
+        dynamic_buffer.extend_from_slice(&buffer[..V2_MINIMUM_LEN]);
+
+        // Read the remaining header length
+        stream
+            .read_exact(&mut dynamic_buffer[V2_MINIMUM_LEN..full_length])
+            .await?;
+
+        Ok(Some(dynamic_buffer))
+    } else {
+        // Read the remaining header length
+        stream
+            .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
+            .await?;
+
+        Ok(None)
+    }
+}
+
+async fn read_v1_header<I>(
+    mut stream: I,
+    buffer: &mut [u8; READ_BUFFER_LEN],
+) -> Result<(), io::Error>
+where
+    I: AsyncRead + Unpin,
+{
+    // read one byte at a time until terminator found
+    let mut end_found = false;
+    for i in V1_PREFIX_LEN..V1_MAX_LENGTH {
+        buffer[i] = stream.read_u8().await?;
+
+        if [buffer[i - 1], buffer[i]] == V1_TERMINATOR {
+            end_found = true;
+            break;
+        }
+    }
+    if !end_found {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "No valid Proxy Protocol header detected",
+        ));
+    }
+
+    Ok(())
 }
 
 /// Middleware for adding client IP address to the request `forwarded` header.
