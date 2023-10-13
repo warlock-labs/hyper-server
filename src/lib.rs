@@ -1,4 +1,4 @@
-//! axum-server is a [hyper] server implementation designed to be used with [axum] framework.
+//! hyper-server is a [hyper] server implementation designed to be used with [axum] framework.
 //!
 //! # Features
 //!
@@ -10,7 +10,7 @@
 //!
 //! # Guide
 //!
-//! axum-server can [`serve`] items that implement [`MakeService`] with some additional [trait
+//! hyper-server can [`serve`] items that implement [`MakeService`] with some additional [trait
 //! bounds](crate::service::MakeServiceRef). Make services that are [created] using [`axum`]
 //! complies with those trait bounds out of the box. Therefore it is more convenient to use this
 //! crate with [`axum`].
@@ -62,7 +62,7 @@
 //! [created]: https://docs.rs/axum/0.3/axum/struct.Router.html#method.into_make_service
 //! [hyper]: https://crates.io/crates/hyper
 //! [openssl]: https://crates.io/crates/openssl
-//! [repository]: https://github.com/programatik29/axum-server/tree/v0.3.0/examples
+//! [repository]: https://github.com/valorem-labs-inc/hyper-server/examples
 //! [rustls]: https://crates.io/crates/rustls
 //! [tower]: https://crates.io/crates/tower
 //! [`axum`]: https://docs.rs/axum/0.3

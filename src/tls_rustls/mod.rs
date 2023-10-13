@@ -42,16 +42,17 @@ use tokio::{
 };
 use tokio_rustls::server::TlsStream;
 
+/// Sub-module that contains re-exported public interfaces.
 pub(crate) mod export {
     use super::{RustlsAcceptor, RustlsConfig, Server, SocketAddr};
 
-    /// Create a tls server that will bind to provided address.
+    /// Creates a TLS server that binds to the provided address using the rustls library.
     #[cfg_attr(docsrs, doc(cfg(feature = "tls-rustls")))]
     pub fn bind_rustls(addr: SocketAddr, config: RustlsConfig) -> Server<RustlsAcceptor> {
         super::bind_rustls(addr, config)
     }
 
-    /// Create a tls server from existing `std::net::TcpListener`.
+    /// Creates a TLS server from an existing `std::net::TcpListener` using the rustls library.
     #[cfg_attr(docsrs, doc(cfg(feature = "tls-rustls")))]
     pub fn from_tcp_rustls(
         listener: std::net::TcpListener,
@@ -65,14 +66,14 @@ pub(crate) mod export {
 
 pub mod future;
 
-/// Create a tls server that will bind to provided address.
+/// Helper function to create a TLS server bound to a provided address.
 pub fn bind_rustls(addr: SocketAddr, config: RustlsConfig) -> Server<RustlsAcceptor> {
     let acceptor = RustlsAcceptor::new(config);
 
     Server::bind(addr).acceptor(acceptor)
 }
 
-/// Create a tls server from existing `std::net::TcpListener`.
+/// Helper function to create a TLS server from an existing `std::net::TcpListener`.
 pub fn from_tcp_rustls(
     listener: std::net::TcpListener,
     config: RustlsConfig,
@@ -82,7 +83,7 @@ pub fn from_tcp_rustls(
     Server::from_tcp(listener).acceptor(acceptor)
 }
 
-/// Tls acceptor using rustls.
+/// A TLS acceptor implementation using the rustls library.
 #[derive(Clone)]
 pub struct RustlsAcceptor<A = DefaultAcceptor> {
     inner: A,
@@ -91,14 +92,14 @@ pub struct RustlsAcceptor<A = DefaultAcceptor> {
 }
 
 impl RustlsAcceptor {
-    /// Create a new rustls acceptor.
+    /// Constructs a new rustls acceptor with the given configuration.
     pub fn new(config: RustlsConfig) -> Self {
         let inner = DefaultAcceptor::new();
 
+        // Default handshake timeout is set to 10 seconds.
+        // In test mode, this is reduced to 1 second to avoid waiting too long.
         #[cfg(not(test))]
         let handshake_timeout = Duration::from_secs(10);
-
-        // Don't force tests to wait too long.
         #[cfg(test)]
         let handshake_timeout = Duration::from_secs(1);
 
@@ -109,7 +110,7 @@ impl RustlsAcceptor {
         }
     }
 
-    /// Override the default TLS handshake timeout of 10 seconds, except during testing.
+    /// Allows overriding the default TLS handshake timeout.
     pub fn handshake_timeout(mut self, val: Duration) -> Self {
         self.handshake_timeout = val;
         self
@@ -117,7 +118,7 @@ impl RustlsAcceptor {
 }
 
 impl<A> RustlsAcceptor<A> {
-    /// Overwrite inner acceptor.
+    /// Replaces the inner acceptor with a custom acceptor.
     pub fn acceptor<Acceptor>(self, acceptor: Acceptor) -> RustlsAcceptor<Acceptor> {
         RustlsAcceptor {
             inner: acceptor,
@@ -127,6 +128,7 @@ impl<A> RustlsAcceptor<A> {
     }
 }
 
+// Implementation to accept incoming TLS connections using rustls.
 impl<A, I, S> Accept<I, S> for RustlsAcceptor<A>
 where
     A: Accept<I, S>,
@@ -150,101 +152,91 @@ impl<A> fmt::Debug for RustlsAcceptor<A> {
     }
 }
 
-/// Rustls configuration.
+/// Represents the rustls configuration for the server.
 #[derive(Clone)]
 pub struct RustlsConfig {
     inner: Arc<ArcSwap<ServerConfig>>,
 }
 
+// The `RustlsConfig` structure represents configuration data for rustls.
 impl RustlsConfig {
-    /// Create config from `Arc<`[`ServerConfig`]`>`.
+    /// Create a new `RustlsConfig` from an `Arc<ServerConfig>`.
     ///
-    /// NOTE: You need to set ALPN protocols (like `http/1.1` or `h2`) manually.
+    /// Important: This method does not set ALPN protocols (like `http/1.1` or `h2`) automatically.
+    /// ALPN protocols need to be set manually when using this method.
     pub fn from_config(config: Arc<ServerConfig>) -> Self {
         let inner = Arc::new(ArcSwap::new(config));
-
         Self { inner }
     }
 
-    /// Create config from DER-encoded data.
+    /// Create a `RustlsConfig` from DER-encoded data.
+    /// DER is a binary format for encoding data, commonly used for certificates and keys.
     ///
-    /// The certificate must be DER-encoded X.509.
-    ///
-    /// The private key must be DER-encoded ASN.1 in either PKCS#8 or PKCS#1 format.
+    /// `cert` is expected to be a DER-encoded X.509 certificate.
+    /// `key` is expected to be a DER-encoded ASN.1 format private key, either in PKCS#8 or PKCS#1 format.
     pub async fn from_der(cert: Vec<Vec<u8>>, key: Vec<u8>) -> io::Result<Self> {
         let server_config = spawn_blocking(|| config_from_der(cert, key))
             .await
             .unwrap()?;
         let inner = Arc::new(ArcSwap::from_pointee(server_config));
-
         Ok(Self { inner })
     }
 
-    /// Create config from PEM formatted data.
+    /// Create a `RustlsConfig` from PEM-formatted data.
+    /// PEM is a text-based format used to encode binary data like certificates and keys.
     ///
-    /// Certificate and private key must be in PEM format.
+    /// Both `cert` and `key` must be provided in PEM format.
     pub async fn from_pem(cert: Vec<u8>, key: Vec<u8>) -> io::Result<Self> {
         let server_config = spawn_blocking(|| config_from_pem(cert, key))
             .await
             .unwrap()?;
         let inner = Arc::new(ArcSwap::from_pointee(server_config));
-
         Ok(Self { inner })
     }
 
-    /// Create config from PEM formatted files.
+    /// Create a `RustlsConfig` by reading PEM-formatted files.
     ///
-    /// Contents of certificate file and private key file must be in PEM format.
+    /// The contents of the provided certificate and private key files must be in PEM format.
     pub async fn from_pem_file(cert: impl AsRef<Path>, key: impl AsRef<Path>) -> io::Result<Self> {
         let server_config = config_from_pem_file(cert, key).await?;
         let inner = Arc::new(ArcSwap::from_pointee(server_config));
-
         Ok(Self { inner })
     }
 
-    /// Get  inner `Arc<`[`ServerConfig`]`>`.
+    /// Retrieve the inner `Arc<ServerConfig>` from the `RustlsConfig`.
     pub fn get_inner(&self) -> Arc<ServerConfig> {
         self.inner.load_full()
     }
 
-    /// Reload config from `Arc<`[`ServerConfig`]`>`.
+    /// Update (or reload) the `RustlsConfig` with a new `Arc<ServerConfig>`.
     pub fn reload_from_config(&self, config: Arc<ServerConfig>) {
         self.inner.store(config);
     }
 
-    /// Reload config from DER-encoded data.
+    /// Reload the `RustlsConfig` from provided DER-encoded data.
     ///
-    /// The certificate must be DER-encoded X.509.
-    ///
-    /// The private key must be DER-encoded ASN.1 in either PKCS#8 or PKCS#1 format.
+    /// As with the `from_der` method, `cert` must be DER-encoded X.509 and `key`
+    /// should be in either PKCS#8 or PKCS#1 DER-encoded ASN.1 format.
     pub async fn reload_from_der(&self, cert: Vec<Vec<u8>>, key: Vec<u8>) -> io::Result<()> {
         let server_config = spawn_blocking(|| config_from_der(cert, key))
             .await
             .unwrap()?;
         let inner = Arc::new(server_config);
-
         self.inner.store(inner);
-
         Ok(())
     }
 
-    /// Reload config from PEM formatted data.
-    ///
-    /// Certificate and private key must be in PEM format.
+    /// Reload the `RustlsConfig` using provided PEM-formatted data.
     pub async fn reload_from_pem(&self, cert: Vec<u8>, key: Vec<u8>) -> io::Result<()> {
         let server_config = spawn_blocking(|| config_from_pem(cert, key))
             .await
             .unwrap()?;
         let inner = Arc::new(server_config);
-
         self.inner.store(inner);
-
         Ok(())
     }
 
-    /// Reload config from PEM formatted files.
-    ///
-    /// Contents of certificate file and private key file must be in PEM format.
+    /// Reload the `RustlsConfig` from provided PEM-formatted files.
     pub async fn reload_from_pem_file(
         &self,
         cert: impl AsRef<Path>,
@@ -252,37 +244,42 @@ impl RustlsConfig {
     ) -> io::Result<()> {
         let server_config = config_from_pem_file(cert, key).await?;
         let inner = Arc::new(server_config);
-
         self.inner.store(inner);
-
         Ok(())
     }
 }
 
+// This provides a debug representation for the `RustlsConfig`.
 impl fmt::Debug for RustlsConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RustlsConfig").finish()
     }
 }
 
+// Helper function to convert DER-encoded certificate and key into rustls's `ServerConfig`.
 fn config_from_der(cert: Vec<Vec<u8>>, key: Vec<u8>) -> io::Result<ServerConfig> {
+    // Convert the raw bytes into rustls's Certificate and PrivateKey structures.
     let cert = cert.into_iter().map(Certificate).collect();
     let key = PrivateKey(key);
 
+    // Construct the ServerConfig.
     let mut config = ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(cert, key)
         .map_err(io_other)?;
 
+    // Set ALPN protocols for the configuration.
     config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
     Ok(config)
 }
 
+// Helper function to convert PEM-formatted certificate and key into rustls' `ServerConfig`.
 fn config_from_pem(cert: Vec<u8>, key: Vec<u8>) -> io::Result<ServerConfig> {
     use rustls_pemfile::Item;
 
+    // Parse PEM formatted data into rustls structures.
     let cert = rustls_pemfile::certs(&mut cert.as_ref())?;
     let key = match rustls_pemfile::read_one(&mut key.as_ref())? {
         Some(Item::RSAKey(key)) | Some(Item::PKCS8Key(key)) | Some(Item::ECKey(key)) => key,
@@ -292,10 +289,12 @@ fn config_from_pem(cert: Vec<u8>, key: Vec<u8>) -> io::Result<ServerConfig> {
     config_from_der(cert, key)
 }
 
+// Helper function to read PEM-formatted files and convert them into rustls' ServerConfig.
 async fn config_from_pem_file(
     cert: impl AsRef<Path>,
     key: impl AsRef<Path>,
 ) -> io::Result<ServerConfig> {
+    // Read the PEM files asynchronously.
     let cert = tokio::fs::read(cert.as_ref()).await?;
     let key = tokio::fs::read(key.as_ref()).await?;
 

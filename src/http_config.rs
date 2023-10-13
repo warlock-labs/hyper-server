@@ -1,30 +1,36 @@
 use hyper::server::conn::Http;
 use std::time::Duration;
 
-/// A configuration for [`Http`].
+/// Represents a configuration for the [`Http`] protocol.
+/// This allows for detailed customization of various HTTP/1 and HTTP/2 settings.
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
+    /// The inner HTTP configuration from the `hyper` crate.
     pub(crate) inner: Http,
 }
 
 impl Default for HttpConfig {
+    /// Provides a default HTTP configuration.
     fn default() -> Self {
         Self::new()
     }
 }
 
 impl HttpConfig {
-    /// Creates a default [`Http`] config.
+    /// Creates a new `HttpConfig` with default settings.
     pub fn new() -> HttpConfig {
         Self { inner: Http::new() }
     }
 
-    /// Builds the config, creating an owned version of it.
+    /// Clones the current configuration state and returns it.
+    /// Useful for building configurations dynamically.
     pub fn build(&mut self) -> Self {
         self.clone()
     }
 
-    /// Sets whether HTTP1 is required.
+    /// Configures whether to exclusively support HTTP/1.
+    ///
+    /// When enabled, only HTTP/1 requests are processed, and HTTP/2 requests are rejected.
     ///
     /// Default is `false`.
     pub fn http1_only(&mut self, val: bool) -> &mut Self {
@@ -32,12 +38,12 @@ impl HttpConfig {
         self
     }
 
-    /// Set whether HTTP/1 connections should support half-closures.
+    /// Specifies if HTTP/1 connections should be allowed to use half-closures.
     ///
-    /// Clients can chose to shutdown their write-side while waiting
-    /// for the server to respond. Setting this to `true` will
-    /// prevent closing the connection immediately if `read`
-    /// detects an EOF in the middle of a request.
+    /// A half-closure in TCP occurs when one side of the data stream is terminated,
+    /// but the other side remains open. This setting, when `true`, ensures the server
+    /// doesn't immediately close a connection if a client shuts down their sending side
+    /// while waiting for a response.
     ///
     /// Default is `false`.
     pub fn http1_half_close(&mut self, val: bool) -> &mut Self {
@@ -45,7 +51,9 @@ impl HttpConfig {
         self
     }
 
-    /// Enables or disables HTTP/1 keep-alive.
+    /// Enables or disables the keep-alive feature for HTTP/1 connections.
+    ///
+    /// Keep-alive allows the connection to be reused for multiple requests and responses.
     ///
     /// Default is true.
     pub fn http1_keep_alive(&mut self, val: bool) -> &mut Self {
@@ -53,10 +61,10 @@ impl HttpConfig {
         self
     }
 
-    /// Set whether HTTP/1 connections will write header names as title case at
-    /// the socket level.
+    /// Determines if HTTP/1 connections should write headers with title-case naming.
     ///
-    /// Note that this setting does not affect HTTP/2.
+    /// For example, turning this setting `true` would send headers as "Content-Type" instead of "content-type".
+    /// Note that this has no effect on HTTP/2 connections.
     ///
     /// Default is false.
     pub fn http1_title_case_headers(&mut self, enabled: bool) -> &mut Self {
@@ -64,10 +72,10 @@ impl HttpConfig {
         self
     }
 
-    /// Set whether HTTP/1 connections will write header names as provided
-    /// at the socket level.
+    /// Determines if HTTP/1 connections should preserve the original case of headers.
     ///
-    /// Note that this setting does not affect HTTP/2.
+    /// By default, headers might be normalized. Enabling this will ensure headers retain their original casing.
+    /// This setting doesn't influence HTTP/2.
     ///
     /// Default is false.
     pub fn http1_preserve_header_case(&mut self, enabled: bool) -> &mut Self {
@@ -75,35 +83,33 @@ impl HttpConfig {
         self
     }
 
-    /// Set a timeout for reading client request headers. If a client does not
-    /// transmit the entire header within this time, the connection is closed.
+    /// Configures a timeout for how long the server will wait for client headers.
     ///
-    /// Default is None.
+    /// If the client doesn't send all headers within this duration, the connection is terminated.
+    ///
+    /// Default is None, meaning no timeout.
     pub fn http1_header_read_timeout(&mut self, val: Duration) -> &mut Self {
         self.inner.http1_header_read_timeout(val);
         self
     }
 
-    /// Set whether HTTP/1 connections should try to use vectored writes,
-    /// or always flatten into a single buffer.
+    /// Specifies whether to use vectored writes for HTTP/1 connections.
     ///
-    /// Note that setting this to false may mean more copies of body data,
-    /// but may also improve performance when an IO transport doesn't
-    /// support vectored writes well, such as most TLS implementations.
+    /// Vectored writes can be efficient for multiple non-contiguous data segments.
+    /// However, certain transports (like many TLS implementations) may not handle vectored writes well.
+    /// When disabled, data is flattened into a single buffer before writing.
     ///
-    /// Setting this to true will force hyper to use queued strategy
-    /// which may eliminate unnecessary cloning on some TLS backends
-    ///
-    /// Default is `auto`. In this mode hyper will try to guess which
-    /// mode to use
+    /// Default is `auto`, where the best method is determined dynamically.
     pub fn http1_writev(&mut self, val: bool) -> &mut Self {
         self.inner.http1_writev(val);
         self
     }
 
-    /// Sets whether HTTP2 is required.
+    /// Configures the server to exclusively support HTTP/2.
     ///
-    /// Default is false
+    /// When enabled, only HTTP/2 requests are processed, and HTTP/1 requests are rejected.
+    ///
+    /// Default is false.
     pub fn http2_only(&mut self, val: bool) -> &mut Self {
         self.inner.http2_only(val);
         self
@@ -245,9 +251,9 @@ impl HttpConfig {
         self
     }
 
-    /// Aggregates flushes to better support pipelined responses.
+    /// Determines if multiple responses should be buffered and sent together to support pipelined responses.
     ///
-    /// Experimental, may have bugs.
+    /// This can improve throughput in certain situations, but is experimental and might contain issues.
     ///
     /// Default is false.
     pub fn pipeline_flush(&mut self, enabled: bool) -> &mut Self {

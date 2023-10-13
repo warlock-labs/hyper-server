@@ -43,7 +43,7 @@ You can find more examples [here](/examples).
 
 ## Minimum Supported Rust Version
 
-axum-server's MSRV is `1.65`.
+hyper-server's MSRV is `1.65`.
 
 ## Safety
 

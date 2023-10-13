@@ -9,7 +9,10 @@ use std::{
 };
 use tokio::{sync::Notify, time::sleep};
 
-/// A handle for [`Server`](crate::server::Server).
+/// A handle to manage and interact with the server.
+///
+/// `Handle` provides methods to access server information, such as the number of active connections,
+/// and to perform actions like initiating a shutdown.
 #[derive(Clone, Debug, Default)]
 pub struct Handle {
     inner: Arc<HandleInner>,
@@ -27,33 +30,51 @@ struct HandleInner {
 }
 
 impl Handle {
-    /// Create a new handle.
+    /// Create a new handle for the server.
+    ///
+    /// # Returns
+    ///
+    /// A new `Handle` instance.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Get the number of connections.
+    /// Get the number of active connections to the server.
+    ///
+    /// # Returns
+    ///
+    /// The number of active connections.
     pub fn connection_count(&self) -> usize {
         self.inner.conn_count.load(Ordering::SeqCst)
     }
 
-    /// Shutdown the server.
+    /// Initiate an immediate shutdown of the server.
+    ///
+    /// This method will terminate the server without waiting for active connections to close.
     pub fn shutdown(&self) {
         self.inner.shutdown.notify_waiters();
     }
 
-    /// Gracefully shutdown the server.
+    /// Initiate a graceful shutdown of the server.
     ///
-    /// `None` means indefinite grace period.
+    /// The server will wait for active connections to close before shutting down. If a duration
+    /// is provided, the server will wait up to that duration for active connections to close
+    /// before forcing a shutdown.
+    ///
+    /// # Parameters
+    ///
+    /// - `duration`: Maximum time to wait for active connections to close. `None` means the server
+    /// will wait indefinitely.
     pub fn graceful_shutdown(&self, duration: Option<Duration>) {
         *self.inner.graceful_dur.lock().unwrap() = duration;
-
         self.inner.graceful.notify_waiters();
     }
 
-    /// Returns local address and port when server starts listening.
+    /// Wait until the server starts listening and then returns its local address and port.
     ///
-    /// Returns `None` if server fails to bind.
+    /// # Returns
+    ///
+    /// The local `SocketAddr` if the server successfully binds, otherwise `None`.
     pub async fn listening(&self) -> Option<SocketAddr> {
         let notified = self.inner.addr_notify.notified();
 
@@ -66,24 +87,28 @@ impl Handle {
         *self.inner.addr.lock().unwrap()
     }
 
+    /// Internal method to notify the handle when the server starts listening on a particular address.
     pub(crate) fn notify_listening(&self, addr: Option<SocketAddr>) {
         *self.inner.addr.lock().unwrap() = addr;
-
         self.inner.addr_notify.notify_waiters();
     }
 
+    /// Creates a watcher that monitors server status and connection activity.
     pub(crate) fn watcher(&self) -> Watcher {
         Watcher::new(self.clone())
     }
 
+    /// Internal method to wait until the server is shut down.
     pub(crate) async fn wait_shutdown(&self) {
         self.inner.shutdown.notified().await;
     }
 
+    /// Internal method to wait until the server is gracefully shut down.
     pub(crate) async fn wait_graceful_shutdown(&self) {
         self.inner.graceful.notified().await;
     }
 
+    /// Internal method to wait until all connections have ended, or the optional graceful duration has expired.
     pub(crate) async fn wait_connections_end(&self) {
         if self.inner.conn_count.load(Ordering::SeqCst) == 0 {
             return;
@@ -102,27 +127,36 @@ impl Handle {
     }
 }
 
+/// A watcher that monitors server status and connection activity.
+///
+/// The watcher keeps track of active connections and listens for shutdown or graceful shutdown signals.
 pub(crate) struct Watcher {
     handle: Handle,
 }
 
 impl Watcher {
+    /// Creates a new watcher linked to the given server handle.
     fn new(handle: Handle) -> Self {
         handle.inner.conn_count.fetch_add(1, Ordering::SeqCst);
-
         Self { handle }
     }
 
+    /// Internal method to wait until the server is gracefully shut down.
     pub(crate) async fn wait_graceful_shutdown(&self) {
         self.handle.wait_graceful_shutdown().await
     }
 
+    /// Internal method to wait until the server is shut down.
     pub(crate) async fn wait_shutdown(&self) {
         self.handle.wait_shutdown().await
     }
 }
 
 impl Drop for Watcher {
+    /// Reduces the active connection count when a watcher is dropped.
+    ///
+    /// If the connection count reaches zero and a graceful shutdown has been initiated, the server is notified that
+    /// all connections have ended.
     fn drop(&mut self) {
         let count = self.handle.inner.conn_count.fetch_sub(1, Ordering::SeqCst) - 1;
 
