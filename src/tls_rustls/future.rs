@@ -78,7 +78,7 @@ where
                         Poll::Ready(Ok((stream, service))) => {
                             let server_config = this.config
                                 .take()
-                                .expect("config is not set. this is a bug in axum-server, please report")
+                                .expect("config is not set. this is a bug in hyper-server, please report")
                                 .get_inner();
 
                             let acceptor = TlsAcceptor::from(server_config);
