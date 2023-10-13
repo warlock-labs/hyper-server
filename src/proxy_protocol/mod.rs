@@ -58,6 +58,10 @@ pub(crate) mod future;
 use self::future::ProxyProtocolAcceptorFuture;
 
 const V1_PREFIX_LEN: usize = 5;
+/// The maximum length of a header in bytes.
+const V1_MAX_LENGTH: usize = 107;
+/// The terminator of the PROXY protocol header.
+const V1_TERMINATOR: &[u8] = b"\r\n";
 const V2_PREFIX_LEN: usize = 12;
 /// The index of the version-command byte.
 const V2_MINIMUM_LEN: usize = 16;
@@ -73,18 +77,60 @@ where
 {
     // mutable buffer for storing stream data
     let mut buffer = [0; DEFAULT_BUFFER_LEN];
+    let mut dynamic_buffer = None;
+    let mut full_length = 0;
 
-    // 1. read minimum length
-    stream.read_exact(&mut buffer[..V2_MINIMUM_LEN]).await?;
+    // 1. Read prefix to check for v1, v2, or kill
+    stream.read_exact(&mut buffer[..V1_PREFIX_LEN]).await?;
 
-    // 2. check for v2 prefix
-    if &buffer[..V2_PREFIX_LEN] != v2::PROTOCOL_PREFIX {
-        if &buffer[..V1_PREFIX_LEN] == v1::PROTOCOL_PREFIX.as_bytes() {
+    if &buffer[..V1_PREFIX_LEN] == v1::PROTOCOL_PREFIX.as_bytes() {
+        // 2. Read until terminator found
+        let mut end_found = false;
+        for i in V1_PREFIX_LEN..V1_MAX_LENGTH {
+            stream.read_exact(&mut buffer[i..i + 1]).await?;
+
+            if [buffer[i - 1], buffer[i]] == V1_TERMINATOR {
+                end_found = true;
+                full_length = i + 1;
+                break;
+            }
+        }
+        if !end_found {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "V1 Proxy Protocol header detected, which is not supported",
+                "No valid Proxy Protocol header detected",
             ));
+        }
+    } else {
+        // read further in to get v2 prefix
+        stream
+            .read_exact(&mut buffer[V1_PREFIX_LEN..V2_MINIMUM_LEN])
+            .await?;
+
+        if &buffer[..V2_PREFIX_LEN] == v2::PROTOCOL_PREFIX {
+            // 2. Decode the v2 header length
+            let length = u16::from_be_bytes([buffer[LENGTH], buffer[LENGTH + 1]]) as usize;
+            full_length = V2_MINIMUM_LEN + length;
+
+            // Switch to dynamic buffer is header is too long. V2 has no maximum length.
+            if full_length > DEFAULT_BUFFER_LEN {
+                let mut vec = Vec::with_capacity(full_length);
+                vec.extend_from_slice(&buffer[..V2_MINIMUM_LEN]);
+                dynamic_buffer = Some(vec);
+            }
+
+            // 3. Read the remaining header length
+            if let Some(ref mut vec) = dynamic_buffer {
+                stream
+                    .read_exact(&mut vec[V2_MINIMUM_LEN..full_length])
+                    .await?;
+            } else {
+                stream
+                    .read_exact(&mut buffer[V2_MINIMUM_LEN..full_length])
+                    .await?;
+            }
         } else {
+            // kill
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "No valid Proxy Protocol header detected",
@@ -92,34 +138,27 @@ where
         }
     }
 
-    // 3. decode the v2 header length
-    let length = u16::from_be_bytes([buffer[LENGTH], buffer[LENGTH + 1]]) as usize;
-    let full_length = V2_MINIMUM_LEN + length;
-
-    let mut dynamic_buffer = if full_length > DEFAULT_BUFFER_LEN {
-        let mut vec = Vec::with_capacity(full_length);
-        vec.extend_from_slice(&buffer[..V2_MINIMUM_LEN]);
-        Some(vec)
-    } else {
-        None
-    };
-
-    // 4. read the remaining header length
-    if let Some(ref mut vec) = dynamic_buffer {
-        stream.read_exact(&mut vec[V2_MINIMUM_LEN..full_length]).await?;
-    } else {
-        stream.read_exact(&mut buffer[V2_MINIMUM_LEN..full_length]).await?;
-    }
-
-    // 5. parse the header
+    // 4. parse the header
     let buffer_to_parse = dynamic_buffer.as_deref().unwrap_or(&buffer[..]); // Choose which buffer to parse
     let header = HeaderResult::parse(&buffer_to_parse[..full_length]);
 
     match header {
-        HeaderResult::V1(Ok(_header)) => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "V1 Proxy Protocol header detected when parsing data",
-        )),
+        HeaderResult::V1(Ok(header)) => {
+            let client_address = match header.addresses {
+                v1::Addresses::Tcp4(ip) => {
+                    SocketAddr::new(IpAddr::V4(ip.source_address), ip.source_port)
+                }
+                v1::Addresses::Tcp6(ip) => {
+                    SocketAddr::new(IpAddr::V6(ip.source_address), ip.source_port)
+                }
+                v1::Addresses::Unknown => {
+                    // Return client address as `None` so that "unknown" is used in the http header
+                    return Ok((stream, None));
+                }
+            };
+
+            Ok((stream, Some(client_address)))
+        }
         HeaderResult::V2(Ok(header)) => {
             let client_address = match header.addresses {
                 v2::Addresses::IPv4(ip) => {
@@ -280,7 +319,7 @@ impl<A> fmt::Debug for ProxyProtocolAcceptor<A> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     #[cfg(feature = "tls-openssl")]
     use crate::tls_openssl::{
         self,
@@ -316,7 +355,7 @@ pub(crate) mod tests {
     async fn start_and_request() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
-        let addr = start_proxy(server_addr, true)
+        let addr = start_proxy(server_addr, ProxyVersion::V2)
             .await
             .expect("Failed to start proxy");
 
@@ -331,7 +370,31 @@ pub(crate) mod tests {
     async fn server_receives_client_address() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
-        let addr = start_proxy(server_addr, true)
+        let addr = start_proxy(server_addr, ProxyVersion::V2)
+            .await
+            .expect("Failed to start proxy");
+
+        let (mut client, _conn, client_addr) = connect(addr).await;
+
+        let (parts, body) = send_empty_request(&mut client).await;
+
+        // Check for the Forwarded header
+        let forwarded_header = parts
+            .headers
+            .get("Forwarded")
+            .expect("No Forwarded header present")
+            .to_str()
+            .expect("Failed to convert Forwarded header to str");
+
+        assert!(forwarded_header.contains(&format!("for={}", client_addr)));
+        assert_eq!(body.as_ref(), b"Hello, world!");
+    }
+
+    #[tokio::test]
+    async fn server_receives_client_address_v1() {
+        let (_handle, _server_task, server_addr) = start_server(true).await;
+
+        let addr = start_proxy(server_addr, ProxyVersion::V1)
             .await
             .expect("Failed to start proxy");
 
@@ -356,7 +419,7 @@ pub(crate) mod tests {
     async fn rustls_server_receives_client_address() {
         let (_handle, _server_task, server_addr) = start_rustls_server().await;
 
-        let addr = start_proxy(server_addr, true)
+        let addr = start_proxy(server_addr, ProxyVersion::V2)
             .await
             .expect("Failed to start proxy");
 
@@ -381,7 +444,7 @@ pub(crate) mod tests {
     async fn openssl_server_receives_client_address() {
         let (_handle, _server_task, server_addr) = start_openssl_server().await;
 
-        let addr = start_proxy(server_addr, true)
+        let addr = start_proxy(server_addr, ProxyVersion::V2)
             .await
             .expect("Failed to start proxy");
 
@@ -405,7 +468,7 @@ pub(crate) mod tests {
     async fn not_parsing_when_header_present_fails() {
         let (_handle, _server_task, server_addr) = start_server(false).await;
 
-        let addr = start_proxy(server_addr, true)
+        let addr = start_proxy(server_addr, ProxyVersion::V2)
             .await
             .expect("Failed to start proxy");
 
@@ -432,7 +495,7 @@ pub(crate) mod tests {
     async fn parsing_when_header_not_present_fails() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
-        let addr = start_proxy(server_addr, false)
+        let addr = start_proxy(server_addr, ProxyVersion::None)
             .await
             .expect("Failed to start proxy");
 
@@ -455,7 +518,7 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) async fn forward_ip_handler(req: Request<Body>) -> Response<Body> {
+    async fn forward_ip_handler(req: Request<Body>) -> Response<Body> {
         let mut response = Response::new(Body::from("Hello, world!"));
 
         if let Some(header_value) = req.headers().get("Forwarded") {
@@ -553,9 +616,16 @@ pub(crate) mod tests {
         (handle, server_task, addr)
     }
 
-    pub(crate) async fn start_proxy(
+    #[derive(Debug, Clone, Copy)]
+    enum ProxyVersion {
+        V1,
+        V2,
+        None,
+    }
+
+    async fn start_proxy(
         server_address: SocketAddr,
-        enable_proxy_header: bool,
+        proxy_version: ProxyVersion,
     ) -> Result<SocketAddr, Box<dyn std::error::Error>> {
         let proxy_address = SocketAddr::from(([127, 0, 0, 1], 0));
         let listener = TcpListener::bind(proxy_address).await?;
@@ -567,8 +637,7 @@ pub(crate) mod tests {
                     Ok((client_stream, _)) => {
                         tokio::spawn(async move {
                             if let Err(e) =
-                                handle_conn(client_stream, server_address, enable_proxy_header)
-                                    .await
+                                handle_conn(client_stream, server_address, proxy_version).await
                             {
                                 println!("Error handling connection: {:?}", e);
                             }
@@ -585,7 +654,7 @@ pub(crate) mod tests {
     async fn handle_conn(
         mut client_stream: TcpStream,
         server_address: SocketAddr,
-        enable_proxy_header: bool,
+        proxy_version: ProxyVersion,
     ) -> io::Result<()> {
         let client_address = client_stream.peer_addr()?; // Get the address before splitting
         let mut server_stream = TcpStream::connect(server_address).await?;
@@ -594,9 +663,13 @@ pub(crate) mod tests {
         let (mut client_read, mut client_write) = client_stream.split();
         let (mut server_read, mut server_write) = server_stream.split();
 
-        if enable_proxy_header {
-            send_proxy_header(&mut server_write, client_address, server_address).await?;
-        }
+        send_proxy_header(
+            &mut server_write,
+            client_address,
+            server_address,
+            proxy_version,
+        )
+        .await?;
 
         let duration = Duration::from_secs(1);
         let client_to_server = async {
@@ -643,18 +716,31 @@ pub(crate) mod tests {
         write_stream: &mut (impl AsyncWriteExt + Unpin),
         client_address: SocketAddr,
         server_address: SocketAddr,
+        proxy_version: ProxyVersion,
     ) -> io::Result<()> {
-        let mut header = Builder::with_addresses(
-            // Declare header as mutable
-            Version::Two | Command::Proxy,
-            Protocol::Stream,
-            (client_address, server_address),
-        )
-        .write_tlv(Type::NoOp, b"Hello, World!")?
-        .build()?;
+        match proxy_version {
+            ProxyVersion::V1 => {
+                let header = ppp::v1::Addresses::from((client_address, server_address)).to_string();
 
-        for byte in header.drain(..) {
-            write_stream.write_all(&[byte]).await?;
+                for byte in header.as_bytes() {
+                    write_stream.write_all(&[*byte]).await?;
+                }
+            }
+            ProxyVersion::V2 => {
+                let mut header = Builder::with_addresses(
+                    // Declare header as mutable
+                    Version::Two | Command::Proxy,
+                    Protocol::Stream,
+                    (client_address, server_address),
+                )
+                .write_tlv(Type::NoOp, b"Hello, World!")?
+                .build()?;
+
+                for byte in header.drain(..) {
+                    write_stream.write_all(&[byte]).await?;
+                }
+            }
+            ProxyVersion::None => {}
         }
 
         Ok(())
