@@ -118,7 +118,7 @@ where
                 u16::from_be_bytes([buffer[V2_LENGTH_INDEX], buffer[V2_LENGTH_INDEX + 1]]) as usize;
             full_length = V2_MINIMUM_LEN + length;
 
-            // Switch to dynamic buffer is header is too long. V2 has no maximum length.
+            // Switch to dynamic buffer if header is too long. V2 has no maximum length.
             if full_length > READ_BUFFER_LEN {
                 let mut vec = Vec::with_capacity(full_length);
                 vec.extend_from_slice(&buffer[..V2_MINIMUM_LEN]);
