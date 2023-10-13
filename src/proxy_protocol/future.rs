@@ -1,4 +1,4 @@
-//! Future types.
+//! Future types for PROXY protocol support.
 use crate::accept::Accept;
 use crate::proxy_protocol::ForwardClientIp;
 use pin_project_lite::pin_project;
@@ -13,8 +13,15 @@ use std::{
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::Timeout;
 
+// A `pin_project` is a procedural macro used for safe field projection in conjunction
+// with the Rust Pin API, which guarantees that certain types will not move in memory.
 pin_project! {
-    /// Future type for [`ProxyProtocolAcceptor`](crate::proxy_protocol::ProxyProtocolAcceptor).
+    /// This struct represents the future for the ProxyProtocolAcceptor.
+    /// The generic types are:
+    /// F: The future type.
+    /// A: The type that implements the Accept trait.
+    /// I: The IO type that supports both AsyncRead and AsyncWrite.
+    /// S: The service type.
     pub struct ProxyProtocolAcceptorFuture<F, A, I, S>
     where
         A: Accept<I, S>,
@@ -29,6 +36,7 @@ where
     A: Accept<I, S>,
     I: AsyncRead + AsyncWrite + Unpin,
 {
+    // Constructor for creating a new ProxyProtocolAcceptorFuture.
     pub(crate) fn new(future: Timeout<F>, acceptor: A, service: S) -> Self {
         let inner = AcceptFuture::ReadHeader {
             future,
@@ -39,6 +47,8 @@ where
     }
 }
 
+// Implement Debug trait for ProxyProtocolAcceptorFuture to allow
+// debugging and logging.
 impl<F, A, I, S> fmt::Debug for ProxyProtocolAcceptorFuture<F, A, I, S>
 where
     A: Accept<I, S>,
@@ -50,6 +60,8 @@ where
 }
 
 pin_project! {
+    // AcceptFuture represents the internal states of ProxyProtocolAcceptorFuture.
+    // It can either be waiting to read the header or forward the client IP.
     #[project = AcceptFutureProj]
     enum AcceptFuture<F, A, I, S>
     where
@@ -73,14 +85,18 @@ impl<F, A, I, S> Future for ProxyProtocolAcceptorFuture<F, A, I, S>
 where
     A: Accept<I, S>,
     I: AsyncRead + AsyncWrite + Unpin,
+    // Future whose output is a result with either a tuple of stream and optional address,
+    // or an io::Error.
     F: Future<Output = Result<(I, Option<SocketAddr>), io::Error>>,
 {
     type Output = io::Result<(A::Stream, ForwardClientIp<A::Service>)>;
 
+    // The main poll function that drives the future towards completion.
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
 
         loop {
+            // Check the current state of the inner future.
             match this.inner.as_mut().project() {
                 AcceptFutureProj::ReadHeader {
                     future,
@@ -91,6 +107,7 @@ where
                         let service = service.take().expect("future polled after ready");
                         let future = acceptor.accept(stream, service);
 
+                        // Transition to the ForwardIp state after successfully reading the header.
                         this.inner.set(AcceptFuture::ForwardIp {
                             future,
                             client_address,
@@ -112,6 +129,7 @@ where
                             client_address: *client_address,
                         };
 
+                        // Return the successfully processed stream and service.
                         return Poll::Ready(Ok((stream, service)));
                     }
                     Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
