@@ -133,7 +133,7 @@ impl<A> Server<A> {
         self
     }
 
-    /// Serves the provided [`MakeService`].
+    /// Serves the provided `MakeService`.
     ///
     /// The `MakeService` is responsible for constructing services for each incoming connection.
     /// Each service is then used to handle requests from that specific connection.

@@ -158,9 +158,9 @@ pub struct RustlsConfig {
     inner: Arc<ArcSwap<ServerConfig>>,
 }
 
-// The RustlsConfig structure represents configuration data for rustls.
+// The `RustlsConfig` structure represents configuration data for rustls.
 impl RustlsConfig {
-    /// Create a new `RustlsConfig` from an Arc<ServerConfig>.
+    /// Create a new `RustlsConfig` from an `Arc<ServerConfig>`.
     ///
     /// Important: This method does not set ALPN protocols (like `http/1.1` or `h2`) automatically.
     /// ALPN protocols need to be set manually when using this method.
@@ -208,7 +208,7 @@ impl RustlsConfig {
         self.inner.load_full()
     }
 
-    /// Update (or reload) the `RustlsConfig` with a new Arc<ServerConfig>.
+    /// Update (or reload) the `RustlsConfig` with a new `Arc<ServerConfig>`.
     pub fn reload_from_config(&self, config: Arc<ServerConfig>) {
         self.inner.store(config);
     }
