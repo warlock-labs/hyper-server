@@ -122,19 +122,21 @@ where
                 AcceptFutureProj::ForwardIp {
                     future,
                     client_address,
-                } => return match future.poll(cx) {
-                    Poll::Ready(Ok((stream, service))) => {
-                        let service = ForwardClientIp {
-                            inner: service,
-                            client_address: *client_address,
-                        };
+                } => {
+                    return match future.poll(cx) {
+                        Poll::Ready(Ok((stream, service))) => {
+                            let service = ForwardClientIp {
+                                inner: service,
+                                client_address: *client_address,
+                            };
 
-                        // Return the successfully processed stream and service.
-                        Poll::Ready(Ok((stream, service)))
+                            // Return the successfully processed stream and service.
+                            Poll::Ready(Ok((stream, service)))
+                        }
+                        Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+                        Poll::Pending => Poll::Pending,
                     }
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
-                    Poll::Pending => Poll::Pending,
-                },
+                }
             }
         }
     }

@@ -308,7 +308,6 @@ pub(crate) mod tests {
         assert!(server_result.is_ok());
     }
 
-    #[ignore]
     #[tokio::test]
     async fn test_graceful_shutdown_timed() {
         let (handle, server_task, addr) = start_server().await;
