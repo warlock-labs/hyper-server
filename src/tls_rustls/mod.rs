@@ -546,6 +546,7 @@ pub(crate) mod tests {
         (parts, body)
     }
 
+    /// Used in `proxy-protocol` feature tests.
     pub(crate) fn tls_connector() -> TlsConnector {
         struct NoVerify;
 
@@ -573,6 +574,7 @@ pub(crate) mod tests {
         TlsConnector::from(Arc::new(client_config))
     }
 
+    /// Used in `proxy-protocol` feature tests.
     pub(crate) fn dns_name() -> ServerName {
         ServerName::try_from("localhost").unwrap()
     }

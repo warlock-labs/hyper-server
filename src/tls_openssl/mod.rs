@@ -386,6 +386,7 @@ pub(crate) mod tests {
         (parts, body)
     }
 
+    /// Used in `proxy-protocol` feature tests.
     pub(crate) async fn tls_connector(hostname: &str, stream: TcpStream) -> SslStream<TcpStream> {
         let mut tls_parms = SslConnector::builder(SslMethod::tls_client()).unwrap();
         tls_parms.set_verify(SslVerifyMode::NONE);
@@ -405,6 +406,7 @@ pub(crate) mod tests {
         tls_stream
     }
 
+    /// Used in `proxy-protocol` feature tests.
     pub(crate) fn dns_name() -> &'static str {
         "localhost"
     }

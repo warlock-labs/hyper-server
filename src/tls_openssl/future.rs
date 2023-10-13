@@ -30,7 +30,7 @@ pin_project! {
     pub struct OpenSSLAcceptorFuture<F, I, S> {
         #[pin]
         inner: AcceptFuture<F, I, S>, // Inner future which manages the state machine of accepting connections.
-        config: Option<OpenSSLConfig>, // The SSL/TLS configuration to use for the handshake.
+        config: Option<OpenSSLConfig>, // The SSL/TLS configurati on to use for the handshake.
     }
 }
 
