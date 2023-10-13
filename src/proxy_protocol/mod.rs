@@ -58,17 +58,20 @@ use tower_service::Service;
 pub(crate) mod future;
 use self::future::ProxyProtocolAcceptorFuture;
 
+/// The length of a v1 header in bytes.
 const V1_PREFIX_LEN: usize = 5;
-/// The maximum length of a header in bytes.
+/// The maximum length of a v1 header in bytes.
 const V1_MAX_LENGTH: usize = 107;
-/// The terminator of the PROXY protocol header.
+/// The terminator bytes of a v1 header.
 const V1_TERMINATOR: &[u8] = b"\r\n";
+/// The prefix length of a v2 header in bytes.
 const V2_PREFIX_LEN: usize = 12;
-/// The index of the version-command byte.
+/// The minimum length of a v2 header in bytes.
 const V2_MINIMUM_LEN: usize = 16;
-/// The index of the start of the big-endian u16 length.
-const LENGTH: usize = 14;
-const DEFAULT_BUFFER_LEN: usize = 512;
+/// The index of the start of the big-endian u16 length in the v2 header.
+const V2_LENGTH_INDEX: usize = 14;
+/// The length of the read buffer used to read the PROXY protocol header.
+const READ_BUFFER_LEN: usize = 512;
 
 pub(crate) async fn read_proxy_header<I>(
     mut stream: I,
@@ -77,7 +80,7 @@ where
     I: AsyncRead + Unpin,
 {
     // mutable buffer for storing stream data
-    let mut buffer = [0; DEFAULT_BUFFER_LEN];
+    let mut buffer = [0; READ_BUFFER_LEN];
     let mut dynamic_buffer = None;
     let mut full_length = 0;
 
@@ -110,11 +113,12 @@ where
 
         if &buffer[..V2_PREFIX_LEN] == v2::PROTOCOL_PREFIX {
             // 2. Decode the v2 header length
-            let length = u16::from_be_bytes([buffer[LENGTH], buffer[LENGTH + 1]]) as usize;
+            let length =
+                u16::from_be_bytes([buffer[V2_LENGTH_INDEX], buffer[V2_LENGTH_INDEX + 1]]) as usize;
             full_length = V2_MINIMUM_LEN + length;
 
             // Switch to dynamic buffer is header is too long. V2 has no maximum length.
-            if full_length > DEFAULT_BUFFER_LEN {
+            if full_length > READ_BUFFER_LEN {
                 let mut vec = Vec::with_capacity(full_length);
                 vec.extend_from_slice(&buffer[..V2_MINIMUM_LEN]);
                 dynamic_buffer = Some(vec);
