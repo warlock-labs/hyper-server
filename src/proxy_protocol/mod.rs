@@ -239,7 +239,7 @@ where
             forwarded_string = format!(
                 "{}, {}",
                 existing_value.to_str().unwrap_or(""),
-                &forwarded_string
+                forwarded_string
             );
         }
 
