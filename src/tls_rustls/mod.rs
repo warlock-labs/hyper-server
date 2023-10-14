@@ -302,7 +302,7 @@ async fn config_from_pem_file(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::{
         handle::Handle,
         tls_rustls::{self, RustlsConfig},
@@ -341,7 +341,6 @@ mod tests {
         assert_eq!(body.as_ref(), b"Hello, world!");
     }
 
-    #[ignore]
     #[tokio::test]
     async fn tls_timeout() {
         let (handle, _server_task, addr) = start_server().await;
@@ -459,7 +458,6 @@ mod tests {
         assert!(server_result.is_ok());
     }
 
-    #[ignore]
     #[tokio::test]
     async fn test_graceful_shutdown_timed() {
         let (handle, server_task, addr) = start_server().await;
@@ -546,7 +544,8 @@ mod tests {
         (parts, body)
     }
 
-    fn tls_connector() -> TlsConnector {
+    /// Used in `proxy-protocol` feature tests.
+    pub(crate) fn tls_connector() -> TlsConnector {
         struct NoVerify;
 
         impl ServerCertVerifier for NoVerify {
@@ -573,7 +572,8 @@ mod tests {
         TlsConnector::from(Arc::new(client_config))
     }
 
-    fn dns_name() -> ServerName {
+    /// Used in `proxy-protocol` feature tests.
+    pub(crate) fn dns_name() -> ServerName {
         ServerName::try_from("localhost").unwrap()
     }
 }

@@ -1,4 +1,5 @@
-// Necessary module imports
+#[cfg(feature = "proxy-protocol")]
+use crate::proxy_protocol::ProxyProtocolAcceptor;
 use crate::{
     accept::{Accept, DefaultAcceptor},
     addr_incoming_config::AddrIncomingConfig,
@@ -12,6 +13,8 @@ use hyper::server::{
     accept::Accept as HyperAccept,
     conn::{AddrIncoming, AddrStream},
 };
+#[cfg(feature = "proxy-protocol")]
+use std::time::Duration;
 use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
@@ -30,6 +33,8 @@ pub struct Server<A = DefaultAcceptor> {
     addr_incoming_conf: AddrIncomingConfig,
     handle: Handle,
     http_conf: HttpConfig,
+    #[cfg(feature = "proxy-protocol")]
+    proxy_acceptor_set: bool,
 }
 
 /// Enum representing the ways the server can be initialized - either by binding to an address or from a standard TCP listener.
@@ -61,6 +66,8 @@ impl Server {
             addr_incoming_conf: AddrIncomingConfig::default(),
             handle,
             http_conf: HttpConfig::default(),
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: false,
         }
     }
 
@@ -75,6 +82,8 @@ impl Server {
             addr_incoming_conf: AddrIncomingConfig::default(),
             handle,
             http_conf: HttpConfig::default(),
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: false,
         }
     }
 }
@@ -82,12 +91,43 @@ impl Server {
 impl<A> Server<A> {
     /// Replace the current acceptor with a new one.
     pub fn acceptor<Acceptor>(self, acceptor: Acceptor) -> Server<Acceptor> {
+        #[cfg(feature = "proxy-protocol")]
+        if self.proxy_acceptor_set {
+            panic!("Overwriting the acceptor after proxy protocol is enabled is not supported. Configure the acceptor first in the builder, then enable proxy protocol.");
+        }
+
         Server {
             acceptor,
             listener: self.listener,
             addr_incoming_conf: self.addr_incoming_conf,
             handle: self.handle,
             http_conf: self.http_conf,
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: self.proxy_acceptor_set,
+        }
+    }
+
+    #[cfg(feature = "proxy-protocol")]
+    /// Enable proxy protocol header parsing.
+    /// Note has to be called after initial acceptor is set.
+    pub fn enable_proxy_protocol(
+        self,
+        parsing_timeout: Option<Duration>,
+    ) -> Server<ProxyProtocolAcceptor<A>> {
+        let initial_acceptor = self.acceptor;
+        let mut acceptor = ProxyProtocolAcceptor::new(initial_acceptor);
+
+        if let Some(val) = parsing_timeout {
+            acceptor = acceptor.parsing_timeout(val);
+        }
+
+        Server {
+            acceptor,
+            listener: self.listener,
+            addr_incoming_conf: self.addr_incoming_conf,
+            handle: self.handle,
+            http_conf: self.http_conf,
+            proxy_acceptor_set: true,
         }
     }
 
@@ -102,6 +142,8 @@ impl<A> Server<A> {
             addr_incoming_conf: self.addr_incoming_conf,
             handle: self.handle,
             http_conf: self.http_conf,
+            #[cfg(feature = "proxy-protocol")]
+            proxy_acceptor_set: self.proxy_acceptor_set,
         }
     }
 
@@ -402,6 +444,7 @@ mod tests {
         // Disconnect client.
         conn.abort();
 
+        // TODO(This does not shut down gracefully)
         // Server task should finish soon.
         let server_result = timeout(Duration::from_secs(1), server_task)
             .await
@@ -411,7 +454,6 @@ mod tests {
         assert!(server_result.is_ok());
     }
 
-    #[ignore]
     #[tokio::test]
     async fn test_graceful_shutdown_timed() {
         let (handle, server_task, addr) = start_server().await;
@@ -423,9 +465,6 @@ mod tests {
         let (_parts, body) = send_empty_request(&mut client).await;
 
         assert_eq!(body.as_ref(), b"Hello, world!");
-
-        // Don't disconnect client.
-        // conn.abort();
 
         // Server task should finish soon.
         let server_result = timeout(Duration::from_secs(1), server_task)

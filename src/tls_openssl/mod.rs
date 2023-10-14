@@ -232,7 +232,7 @@ impl fmt::Debug for OpenSSLConfig {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::{
         handle::Handle,
         tls_openssl::{self, OpenSSLConfig},
@@ -308,7 +308,6 @@ mod tests {
         assert!(server_result.is_ok());
     }
 
-    #[ignore]
     #[tokio::test]
     async fn test_graceful_shutdown_timed() {
         let (handle, server_task, addr) = start_server().await;
@@ -386,7 +385,8 @@ mod tests {
         (parts, body)
     }
 
-    async fn tls_connector(hostname: &str, stream: TcpStream) -> SslStream<TcpStream> {
+    /// Used in `proxy-protocol` feature tests.
+    pub(crate) async fn tls_connector(hostname: &str, stream: TcpStream) -> SslStream<TcpStream> {
         let mut tls_parms = SslConnector::builder(SslMethod::tls_client()).unwrap();
         tls_parms.set_verify(SslVerifyMode::NONE);
         let hostname_owned = hostname.to_string();
@@ -405,7 +405,8 @@ mod tests {
         tls_stream
     }
 
-    fn dns_name() -> &'static str {
+    /// Used in `proxy-protocol` feature tests.
+    pub(crate) fn dns_name() -> &'static str {
         "localhost"
     }
 }

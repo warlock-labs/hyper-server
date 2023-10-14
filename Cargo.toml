@@ -15,6 +15,7 @@ version = "0.5.3"
 default = []
 tls-rustls = ["arc-swap", "pin-project-lite", "rustls", "rustls-pemfile", "tokio/fs", "tokio/time", "tokio-rustls"]
 tls-openssl = ["openssl", "tokio-openssl", "pin-project-lite"]
+proxy-protocol = ["ppp", "pin-project-lite"]
 
 [dependencies]
 
@@ -36,6 +37,9 @@ tokio = { version = "1", features = ["macros", "net", "sync"] }
 tokio-openssl = { version = "0.6", optional = true }
 tokio-rustls = { version = "0.24", optional = true }
 tower-service = "0.3"
+
+## proxy-protocol
+ppp = { version = "2.2.0", optional = true }
 
 [dev-dependencies]
 axum = "0.6"
