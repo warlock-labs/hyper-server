@@ -511,9 +511,9 @@ mod tests {
             .await
         {
             // TODO(This should fail when there is no proxy protocol support, perhaps)
-            Ok(o) => {
-                dbg!(o);
-                ()
+            Ok(_o) => {
+                //dbg!(_o);
+                //()
             }
             Err(e) => {
                 if e.is_incomplete_message() {

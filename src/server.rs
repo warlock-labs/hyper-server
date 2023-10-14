@@ -466,9 +466,6 @@ mod tests {
 
         assert_eq!(body.as_ref(), b"Hello, world!");
 
-        // Don't disconnect client.
-        // conn.abort();
-
         // Server task should finish soon.
         let server_result = timeout(Duration::from_secs(1), server_task)
             .await

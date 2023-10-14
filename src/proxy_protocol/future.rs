@@ -135,7 +135,7 @@ where
                         }
                         Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
                         Poll::Pending => Poll::Pending,
-                    }
+                    };
                 }
             }
         }
