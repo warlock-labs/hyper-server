@@ -254,7 +254,7 @@ where
             None => "for=unknown".to_string(),
         };
 
-        if let Some(existing_value) = req.headers_mut().get("Forwarded") {
+        if let Some(existing_value) = req.headers_mut().get(http::header::FORWARDED) {
             forwarded_string = format!(
                 "{}, {}",
                 existing_value.to_str().unwrap_or(""),
@@ -263,7 +263,8 @@ where
         }
 
         if let Ok(header_value) = HeaderValue::from_str(&forwarded_string) {
-            req.headers_mut().insert("Forwarded", header_value);
+            req.headers_mut()
+                .insert(http::header::FORWARDED, header_value);
         }
 
         self.inner.call(req)
@@ -414,7 +415,7 @@ mod tests {
         // Check for the Forwarded header
         let forwarded_header = parts
             .headers
-            .get("Forwarded")
+            .get(http::header::FORWARDED)
             .expect("No Forwarded header present")
             .to_str()
             .expect("Failed to convert Forwarded header to str");
@@ -440,7 +441,7 @@ mod tests {
         // Check for the Forwarded header
         let forwarded_header = parts
             .headers
-            .get("Forwarded")
+            .get(http::header::FORWARDED)
             .expect("No Forwarded header present")
             .to_str()
             .expect("Failed to convert Forwarded header to str");
@@ -467,7 +468,7 @@ mod tests {
         // Check for the Forwarded header
         let forwarded_header = parts
             .headers
-            .get("Forwarded")
+            .get(http::header::FORWARDED)
             .expect("No Forwarded header present")
             .to_str()
             .expect("Failed to convert Forwarded header to str");
@@ -494,7 +495,7 @@ mod tests {
         // Check for the Forwarded header
         let forwarded_header = parts
             .headers
-            .get("Forwarded")
+            .get(http::header::FORWARDED)
             .expect("No Forwarded header present")
             .to_str()
             .expect("Failed to convert Forwarded header to str");
@@ -572,10 +573,10 @@ mod tests {
     async fn forward_ip_handler(req: Request<Body>) -> Response<Body> {
         let mut response = Response::new(Body::from("Hello, world!"));
 
-        if let Some(header_value) = req.headers().get("Forwarded") {
+        if let Some(header_value) = req.headers().get(http::header::FORWARDED) {
             response
                 .headers_mut()
-                .insert("Forwarded", header_value.clone());
+                .insert(http::header::FORWARDED, header_value.clone());
         }
 
         response
