@@ -367,7 +367,11 @@ mod tests {
         Body,
     };
     use ppp::v2::{Builder, Command, Protocol, Type, Version};
-    use std::{io, net::SocketAddr, time::Duration};
+    use std::{
+        io,
+        net::{IpAddr, Ipv4Addr, SocketAddr},
+        time::Duration,
+    };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::{
         net::{TcpListener, TcpStream},
@@ -380,11 +384,13 @@ mod tests {
     async fn start_and_request() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
-        let addr = start_proxy(server_addr, ProxyVersion::V2)
+        let client_addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::new(2, 24, 18, 0)), 8000));
+
+        let addr = start_proxy(server_addr, ProxyVersion::V2, client_addr)
             .await
             .expect("Failed to start proxy");
 
-        let (mut client, _conn, _client_addr) = connect(addr).await;
+        let (mut client, _conn) = connect(addr).await;
 
         let (_parts, body) = send_empty_request(&mut client).await;
 
@@ -395,11 +401,13 @@ mod tests {
     async fn server_receives_client_address() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
-        let addr = start_proxy(server_addr, ProxyVersion::V2)
+        let client_addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::new(2, 24, 18, 0)), 8000));
+
+        let addr = start_proxy(server_addr, ProxyVersion::V2, client_addr)
             .await
             .expect("Failed to start proxy");
 
-        let (mut client, _conn, client_addr) = connect(addr).await;
+        let (mut client, _conn) = connect(addr).await;
 
         let (parts, body) = send_empty_request(&mut client).await;
 
@@ -419,11 +427,13 @@ mod tests {
     async fn server_receives_client_address_v1() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
-        let addr = start_proxy(server_addr, ProxyVersion::V1)
+        let client_addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::new(2, 24, 18, 0)), 8000));
+
+        let addr = start_proxy(server_addr, ProxyVersion::V1, client_addr)
             .await
             .expect("Failed to start proxy");
 
-        let (mut client, _conn, client_addr) = connect(addr).await;
+        let (mut client, _conn) = connect(addr).await;
 
         let (parts, body) = send_empty_request(&mut client).await;
 
@@ -444,11 +454,13 @@ mod tests {
     async fn rustls_server_receives_client_address() {
         let (_handle, _server_task, server_addr) = start_rustls_server().await;
 
-        let addr = start_proxy(server_addr, ProxyVersion::V2)
+        let client_addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::new(2, 24, 18, 0)), 8000));
+
+        let addr = start_proxy(server_addr, ProxyVersion::V2, client_addr)
             .await
             .expect("Failed to start proxy");
 
-        let (mut client, _conn, client_addr) = rustls_connect(addr).await;
+        let (mut client, _conn) = rustls_connect(addr).await;
 
         let (parts, body) = send_empty_request(&mut client).await;
 
@@ -469,11 +481,13 @@ mod tests {
     async fn openssl_server_receives_client_address() {
         let (_handle, _server_task, server_addr) = start_openssl_server().await;
 
-        let addr = start_proxy(server_addr, ProxyVersion::V2)
+        let client_addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::new(2, 24, 18, 0)), 8000));
+
+        let addr = start_proxy(server_addr, ProxyVersion::V2, client_addr)
             .await
             .expect("Failed to start proxy");
 
-        let (mut client, _conn, client_addr) = openssl_connect(addr).await;
+        let (mut client, _conn) = openssl_connect(addr).await;
 
         let (parts, body) = send_empty_request(&mut client).await;
 
@@ -494,13 +508,15 @@ mod tests {
         // Start the server with proxy protocol disabled
         let (_handle, _server_task, server_addr) = start_server(false).await;
 
+        let client_addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::new(2, 24, 18, 0)), 8000));
+
         // Start the proxy
-        let addr = start_proxy(server_addr, ProxyVersion::V2)
+        let addr = start_proxy(server_addr, ProxyVersion::V2, client_addr)
             .await
             .expect("Failed to start proxy");
 
         // Connect to the proxy
-        let (mut client, _conn, _client_addr) = connect(addr).await;
+        let (mut client, _conn) = connect(addr).await;
 
         // Send a request to the proxy
         match client
@@ -528,11 +544,13 @@ mod tests {
     async fn parsing_when_header_not_present_fails() {
         let (_handle, _server_task, server_addr) = start_server(true).await;
 
-        let addr = start_proxy(server_addr, ProxyVersion::None)
+        let client_addr = SocketAddr::from((IpAddr::V4(Ipv4Addr::new(2, 24, 18, 0)), 8000));
+
+        let addr = start_proxy(server_addr, ProxyVersion::None, client_addr)
             .await
             .expect("Failed to start proxy");
 
-        let (mut client, _conn, _client_addr) = connect(addr).await;
+        let (mut client, _conn) = connect(addr).await;
 
         match client
             .ready()
@@ -659,6 +677,7 @@ mod tests {
     async fn start_proxy(
         server_address: SocketAddr,
         proxy_version: ProxyVersion,
+        mock_client_address: SocketAddr,
     ) -> Result<SocketAddr, Box<dyn std::error::Error>> {
         let proxy_address = SocketAddr::from(([127, 0, 0, 1], 0));
         let listener = TcpListener::bind(proxy_address).await?;
@@ -669,8 +688,13 @@ mod tests {
                 match listener.accept().await {
                     Ok((client_stream, _)) => {
                         tokio::spawn(async move {
-                            if let Err(e) =
-                                handle_conn(client_stream, server_address, proxy_version).await
+                            if let Err(e) = handle_conn(
+                                client_stream,
+                                server_address,
+                                proxy_version,
+                                mock_client_address,
+                            )
+                            .await
                             {
                                 println!("Error handling connection: {:?}", e);
                             }
@@ -688,8 +712,9 @@ mod tests {
         mut client_stream: TcpStream,
         server_address: SocketAddr,
         proxy_version: ProxyVersion,
+        client_address: SocketAddr,
     ) -> io::Result<()> {
-        let client_address = client_stream.peer_addr()?; // Get the address before splitting
+        // let client_address = client_stream.peer_addr()?; // Get the address before splitting
         let mut server_stream = TcpStream::connect(server_address).await?;
         let server_address = server_stream.peer_addr()?; // Get the address before splitting
 
@@ -779,9 +804,8 @@ mod tests {
         Ok(())
     }
 
-    async fn connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>, SocketAddr) {
+    async fn connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>) {
         let stream = TcpStream::connect(addr).await.unwrap();
-        let client_addr = stream.local_addr().unwrap();
 
         let (send_request, connection) = handshake(stream).await.unwrap();
 
@@ -789,13 +813,12 @@ mod tests {
             let _ = connection.await;
         });
 
-        (send_request, task, client_addr)
+        (send_request, task)
     }
 
     #[cfg(feature = "tls-rustls")]
-    async fn rustls_connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>, SocketAddr) {
+    async fn rustls_connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>) {
         let stream = TcpStream::connect(addr).await.unwrap();
-        let client_addr = stream.local_addr().unwrap();
         let tls_stream = rustls_connector()
             .connect(rustls_dns_name(), stream)
             .await
@@ -807,13 +830,12 @@ mod tests {
             let _ = connection.await;
         });
 
-        (send_request, task, client_addr)
+        (send_request, task)
     }
 
     #[cfg(feature = "tls-openssl")]
-    async fn openssl_connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>, SocketAddr) {
+    async fn openssl_connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>) {
         let stream = TcpStream::connect(addr).await.unwrap();
-        let client_addr = stream.local_addr().unwrap();
         let tls_stream = openssl_connector(openssl_dns_name(), stream).await;
 
         let (send_request, connection) = handshake(tls_stream).await.unwrap();
@@ -822,7 +844,7 @@ mod tests {
             let _ = connection.await;
         });
 
-        (send_request, task, client_addr)
+        (send_request, task)
     }
 
     async fn send_empty_request(client: &mut SendRequest<Body>) -> (response::Parts, Bytes) {
