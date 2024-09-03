@@ -9,10 +9,6 @@ use crate::{
 };
 use futures_util::future::poll_fn;
 use http::Request;
-use hyper::server::{
-    accept::Accept as HyperAccept,
-    conn::{AddrIncoming, AddrStream},
-};
 #[cfg(feature = "proxy-protocol")]
 use std::time::Duration;
 use std::{

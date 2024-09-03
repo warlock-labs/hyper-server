@@ -1,12 +1,17 @@
-use hyper::server::conn::Http;
+use hyper::server::conn::http1::Builder as Http1Config;
+use hyper::server::conn::http2::Builder as Http2Config;
 use std::time::Duration;
+use hyper_util::rt::TokioExecutor;
 
 /// Represents a configuration for the [`Http`] protocol.
 /// This allows for detailed customization of various HTTP/1 and HTTP/2 settings.
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
     /// The inner HTTP configuration from the `hyper` crate.
-    pub(crate) inner: Http,
+    pub(crate) http1: Http1Config,
+    pub(crate) http2: Http2Config<TokioExecutor>,
+    pub http1_only: bool,
+    pub http2_only: bool,
 }
 
 impl Default for HttpConfig {
@@ -19,7 +24,12 @@ impl Default for HttpConfig {
 impl HttpConfig {
     /// Creates a new `HttpConfig` with default settings.
     pub fn new() -> HttpConfig {
-        Self { inner: Http::new() }
+        Self {
+            http1: Http1Config::new(),
+            http2: Http2Config::new(),
+            http1_only: false,
+            http2_only: false,
+        }
     }
 
     /// Clones the current configuration state and returns it.
@@ -34,7 +44,7 @@ impl HttpConfig {
     ///
     /// Default is `false`.
     pub fn http1_only(&mut self, val: bool) -> &mut Self {
-        self.inner.http1_only(val);
+        self.http1_only = true;
         self
     }
 
@@ -47,7 +57,7 @@ impl HttpConfig {
     ///
     /// Default is `false`.
     pub fn http1_half_close(&mut self, val: bool) -> &mut Self {
-        self.inner.http1_half_close(val);
+        self.http1.half_close(val)
         self
     }
 
@@ -57,7 +67,7 @@ impl HttpConfig {
     ///
     /// Default is true.
     pub fn http1_keep_alive(&mut self, val: bool) -> &mut Self {
-        self.inner.http1_keep_alive(val);
+        self.http1.keep_alive(val);
         self
     }
 
@@ -68,7 +78,7 @@ impl HttpConfig {
     ///
     /// Default is false.
     pub fn http1_title_case_headers(&mut self, enabled: bool) -> &mut Self {
-        self.inner.http1_title_case_headers(enabled);
+        self.http1.title_case_headers(enabled);
         self
     }
 
@@ -79,7 +89,7 @@ impl HttpConfig {
     ///
     /// Default is false.
     pub fn http1_preserve_header_case(&mut self, enabled: bool) -> &mut Self {
-        self.inner.http1_preserve_header_case(enabled);
+        self.http1.preserve_header_case(enabled);
         self
     }
 
@@ -89,7 +99,7 @@ impl HttpConfig {
     ///
     /// Default is None, meaning no timeout.
     pub fn http1_header_read_timeout(&mut self, val: Duration) -> &mut Self {
-        self.inner.http1_header_read_timeout(val);
+        self.http1.header_read_timeout(val);
         self
     }
 
@@ -101,7 +111,7 @@ impl HttpConfig {
     ///
     /// Default is `auto`, where the best method is determined dynamically.
     pub fn http1_writev(&mut self, val: bool) -> &mut Self {
-        self.inner.http1_writev(val);
+        self.http1.writev(val);
         self
     }
 
@@ -111,7 +121,7 @@ impl HttpConfig {
     ///
     /// Default is false.
     pub fn http2_only(&mut self, val: bool) -> &mut Self {
-        self.inner.http2_only(val);
+        self.http2_only = true;
         self
     }
 
@@ -124,7 +134,7 @@ impl HttpConfig {
     ///
     /// [spec]: https://http2.github.io/http2-spec/#SETTINGS_INITIAL_WINDOW_SIZE
     pub fn http2_initial_stream_window_size(&mut self, sz: impl Into<Option<u32>>) -> &mut Self {
-        self.inner.http2_initial_stream_window_size(sz);
+        self.http2.initial_stream_window_size(sz);
         self
     }
 
@@ -137,7 +147,7 @@ impl HttpConfig {
         &mut self,
         sz: impl Into<Option<u32>>,
     ) -> &mut Self {
-        self.inner.http2_initial_connection_window_size(sz);
+        self.http2.initial_connection_window_size(sz);
         self
     }
 
@@ -147,7 +157,7 @@ impl HttpConfig {
     /// `http2_initial_stream_window_size` and
     /// `http2_initial_connection_window_size`.
     pub fn http2_adaptive_window(&mut self, enabled: bool) -> &mut Self {
-        self.inner.http2_adaptive_window(enabled);
+        self.http2.adaptive_window(enabled);
         self
     }
 
@@ -155,7 +165,7 @@ impl HttpConfig {
     ///
     /// [extended CONNECT protocol]: https://datatracker.ietf.org/doc/html/rfc8441#section-4
     pub fn http2_enable_connect_protocol(&mut self) -> &mut Self {
-        self.inner.http2_enable_connect_protocol();
+        self.http2.enable_connect_protocol();
         self
     }
 
@@ -165,7 +175,7 @@ impl HttpConfig {
     ///
     /// If not set, hyper will use a default.
     pub fn http2_max_frame_size(&mut self, sz: impl Into<Option<u32>>) -> &mut Self {
-        self.inner.http2_max_frame_size(sz);
+        self.http2.max_frame_size(sz);
         self
     }
 
@@ -176,7 +186,7 @@ impl HttpConfig {
     ///
     /// [spec]: https://http2.github.io/http2-spec/#SETTINGS_MAX_CONCURRENT_STREAMS
     pub fn http2_max_concurrent_streams(&mut self, max: impl Into<Option<u32>>) -> &mut Self {
-        self.inner.http2_max_concurrent_streams(max);
+        self.http2.max_concurrent_streams(max);
         self
     }
 
@@ -184,7 +194,7 @@ impl HttpConfig {
     ///
     /// Default is currently ~16MB, but may change.
     pub fn http2_max_header_list_size(&mut self, max: u32) -> &mut Self {
-        self.inner.http2_max_header_list_size(max);
+        self.http2.max_header_list_size(max);
         self
     }
 
@@ -198,7 +208,7 @@ impl HttpConfig {
         &mut self,
         max: impl Into<Option<usize>>,
     ) -> &mut Self {
-        self.inner.http2_max_pending_accept_reset_streams(max);
+        self.http2.max_pending_accept_reset_streams(max);
         self
     }
 
@@ -210,7 +220,7 @@ impl HttpConfig {
     ///
     /// The value must be no larger than `u32::MAX`.
     pub fn http2_max_send_buf_size(&mut self, max: usize) -> &mut Self {
-        self.inner.http2_max_send_buf_size(max);
+        self.http2.max_send_buf_size(max);
         self
     }
 
@@ -224,7 +234,7 @@ impl HttpConfig {
         &mut self,
         interval: impl Into<Option<Duration>>,
     ) -> &mut Self {
-        self.inner.http2_keep_alive_interval(interval);
+        self.http2.keep_alive_interval(interval);
         self
     }
 
@@ -235,7 +245,7 @@ impl HttpConfig {
     ///
     /// Default is 20 seconds.
     pub fn http2_keep_alive_timeout(&mut self, timeout: Duration) -> &mut Self {
-        self.inner.http2_keep_alive_timeout(timeout);
+        self.http2.keep_alive_timeout(timeout);
         self
     }
 
@@ -247,7 +257,7 @@ impl HttpConfig {
     ///
     /// The minimum value allowed is 8192. This method panics if the passed `max` is less than the minimum.
     pub fn max_buf_size(&mut self, max: usize) -> &mut Self {
-        self.inner.max_buf_size(max);
+        self.http1.max_buf_size(max);
         self
     }
 
@@ -257,7 +267,7 @@ impl HttpConfig {
     ///
     /// Default is false.
     pub fn pipeline_flush(&mut self, enabled: bool) -> &mut Self {
-        self.inner.pipeline_flush(enabled);
+        self.http1.pipeline_flush(enabled);
         self
     }
 }
