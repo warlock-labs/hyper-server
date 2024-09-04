@@ -1,79 +1,20 @@
 [package]
-authors = ["Programatik <programatik29@gmail.com>", "Megsdevs <megsdevs@outlook.com", "0xAlcibiades <alcibiades.eth@protonmail.com>"]
+authors = ["0xAlcibiades <alcibiades.eth@protonmail.com>"]
 categories = ["asynchronous", "network-programming", "web-programming"]
 description = "High level server for hyper and tower."
 edition = "2021"
 homepage = "https://github.com/valorem-labs-inc/hyper-server"
-keywords = ["axum", "tonic", "hyper", "tower", "server"]
+keywords = ["tokio", "tonic", "hyper", "tower", "server"]
 license = "MIT"
 name = "hyper-server"
 readme = "README.md"
 repository = "https://github.com/valorem-labs-inc/hyper-server"
-version = "0.5.3"
-
-[features]
-default = []
-tls-rustls = ["arc-swap", "pin-project-lite", "rustls", "rustls-pemfile", "tokio/fs", "tokio/time", "tokio-rustls"]
-tls-openssl = ["openssl", "tokio-openssl", "pin-project-lite"]
-proxy-protocol = ["ppp", "pin-project-lite"]
+version = "1.0.0"
 
 [dependencies]
-
-# optional dependencies
-## rustls
-arc-swap = { version = "1", optional = true }
-bytes = "1"
-futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
-http = "0.2"
-http-body = "0.4"
-hyper = { version = "0.14.27", features = ["http1", "http2", "server", "runtime"] }
-
-## openssl
-openssl = { version = "0.10", optional = true }
-pin-project-lite = { version = "0.2", optional = true }
-rustls = { version = "0.21", features = ["dangerous_configuration"], optional = true }
-rustls-pemfile = { version = "1", optional = true }
-tokio = { version = "1", features = ["macros", "net", "sync"] }
-tokio-openssl = { version = "0.6", optional = true }
-tokio-rustls = { version = "0.24", optional = true }
-tower-service = "0.3"
-
-## proxy-protocol
-ppp = { version = "2.2.0", optional = true }
-
-[dev-dependencies]
-axum = "0.6"
-hyper = { version = "0.14", features = ["full"] }
-tokio = { version = "1", features = ["full"] }
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.4.4", features = ["add-extension"] }
-
-[package.metadata.docs.rs]
-all-features = true
-cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
-rustdoc-args = ["--cfg", "docsrs"]
-
-[[example]]
-name = "from_std_listener_rustls"
-required-features = ["tls-rustls"]
-doc-scrape-examples = true
-
-[[example]]
-name = "http_and_https"
-required-features = ["tls-rustls"]
-doc-scrape-examples = true
-
-[[example]]
-name = "rustls_reload"
-required-features = ["tls-rustls"]
-doc-scrape-examples = true
-
-[[example]]
-name = "rustls_server"
-required-features = ["tls-rustls"]
-doc-scrape-examples = true
-
-[[example]]
-name = "rustls_session"
-required-features = ["tls-rustls"]
-doc-scrape-examples = true
+http-body-util = "0.1.2"
+hyper = { version = "1.4.1", features = ["server"] }
+hyper-util = { version = "0.1.7", features = ["service", "tokio", "http1"] }
+tokio = { version = "1.39.3", features = ["rt", "rt-multi-thread", "macros"] }
+tower = { version = "0.5.0", features = ["util"] }
+tracing = "0.1.40"
