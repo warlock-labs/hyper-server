@@ -16,10 +16,16 @@ use std::{
     net::SocketAddr,
     pin::Pin,
 };
+use std::convert::Infallible;
+use bytes::Bytes;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpListener,
 };
+use http_body_util::combinators::BoxBody;
+
+type Body = BoxBody<Bytes, Infallible>;
+
 
 /// Represents an HTTP server with customization capabilities for handling incoming requests.
 #[derive(Debug)]
@@ -189,10 +195,10 @@ impl<A> Server<A> {
     ///
     pub async fn serve<M>(self, mut make_service: M) -> io::Result<()>
     where
-        M: MakeServiceRef<AddrStream, Request<hyper::Body>>,
+        M: MakeServiceRef<AddrStream, Request<BoxBody<Bytes, Infallible>>>,
         A: Accept<AddrStream, M::Service> + Clone + Send + Sync + 'static,
         A::Stream: AsyncRead + AsyncWrite + Unpin + Send,
-        A::Service: SendService<Request<hyper::Body>> + Send,
+        A::Service: SendService<Request<BoxBody<Bytes, Infallible>>> + Send,
         A::Future: Send,
     {
         // Extract relevant fields from `self` for easier access.
@@ -385,13 +391,18 @@ mod tests {
     use axum::{routing::get, Router};
     use bytes::Bytes;
     use http::{response, Request};
-    use hyper::{
-        client::conn::{handshake, SendRequest},
-        Body,
+    use hyper_util::{
+        client::legacy::{handshake, SendRequest},
     };
     use std::{io, net::SocketAddr, time::Duration};
+    use std::convert::Infallible;
+    use axum::handler::Handler;
+    use http_body_util::combinators::BoxBody;
+    use hyper::client::conn::http2::{handshake, SendRequest};
     use tokio::{net::TcpStream, task::JoinHandle, time::timeout};
     use tower::{Service, ServiceExt};
+
+    type Body = BoxBody<Bytes, Infallible>
 
     #[tokio::test]
     async fn start_and_request() {
@@ -416,7 +427,7 @@ mod tests {
             .ready()
             .await
             .unwrap()
-            .call(Request::new(Body::empty()))
+            .call(Request::new(BoxBody::empty()))
             .await;
 
         assert!(response_future_result.is_err());
@@ -491,7 +502,7 @@ mod tests {
         (handle, server_task, addr)
     }
 
-    async fn connect(addr: SocketAddr) -> (SendRequest<Body>, JoinHandle<()>) {
+    async fn connect(addr: SocketAddr) -> (SendRequest<BoxBody<Bytes, Infallible>>, JoinHandle<()>) {
         let stream = TcpStream::connect(addr).await.unwrap();
 
         let (send_request, connection) = handshake(stream).await.unwrap();
