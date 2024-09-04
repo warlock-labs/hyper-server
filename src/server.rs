@@ -11,7 +11,6 @@ use futures_util::future::poll_fn;
 use http::Request;
 use hyper::server::{
     accept::Accept as HyperAccept,
-    conn::{AddrIncoming, AddrStream},
 };
 #[cfg(feature = "proxy-protocol")]
 use std::time::Duration;
@@ -24,6 +23,14 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpListener,
 };
+
+//use hyper::server::conn::{AddrStream,AddrIncoming};
+
+// compatibility types
+use crate::compat::AddrStream;
+use crate::compat::AddrIncoming;
+
+
 
 /// Represents an HTTP server with customization capabilities for handling incoming requests.
 #[derive(Debug)]

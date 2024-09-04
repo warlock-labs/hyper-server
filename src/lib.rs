@@ -101,6 +101,7 @@ mod server;
 
 pub mod accept;
 pub mod service;
+pub mod compat;
 
 pub use self::{
     addr_incoming_config::AddrIncomingConfig,
@@ -128,3 +129,4 @@ pub use self::tls_openssl::bind_openssl;
 #[cfg(feature = "proxy-protocol")]
 #[cfg_attr(docsrs, doc(cfg(feature = "proxy_protocol")))]
 pub mod proxy_protocol;
+

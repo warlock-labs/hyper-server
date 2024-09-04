@@ -2,7 +2,9 @@
 //!
 //! To connect through browser, navigate to "http://localhost:3000" url.
 
-use hyper::{server::conn::AddrStream, Body, Request, Response};
+use hyper::{Body, Request, Response};
+use hyper_server::compat::{AddrStream};
+//use hyper::server::conn::{AddrStream,AddrIncoming};
 use std::{convert::Infallible, net::SocketAddr};
 use tower::service_fn;
 use tower_http::add_extension::AddExtension;
