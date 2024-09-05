@@ -21,32 +21,32 @@ proxy-protocol = ["ppp", "pin-project-lite"]
 
 # optional dependencies
 ## rustls
-arc-swap = { version = "1.7.1", optional = true }
-bytes = "1.7.1"
-futures-util = { version = "0.3.30", default-features = false, features = ["alloc"] }
-http = "0.2.12" # 1.x doesn't compile
-http-body = "0.4.6" # 1.x doesn't compile
-hyper = { version = "0.14.30", features = ["http1", "http2", "server", "runtime"] } # 1.x doesn't compile
+arc-swap = { version = "1", optional = true }
+bytes = "1"
+futures-util = { version = "0.3.28", default-features = false, features = ["alloc"] }
+http = "0.2"
+http-body = "0.4"
+hyper = { version = "0.14.27", features = ["http1", "http2", "server", "runtime"] }
 
 ## openssl
-openssl = { version = "0.10.66", optional = true }
-pin-project-lite = { version = "0.2.14", optional = true }
-rustls = { version = "0.21.12", features = ["dangerous_configuration"], optional = true } # >=0.22 doesn't compile
-rustls-pemfile = { version = "1.0.4", optional = true } # 2.x doesn't compile
+openssl = { version = "0.10", optional = true }
+pin-project-lite = { version = "0.2", optional = true }
+rustls = { version = "0.21", features = ["dangerous_configuration"], optional = true }
+rustls-pemfile = { version = "1", optional = true }
 tokio = { version = "1.33.0", features = ["macros", "net", "sync"] }
-tokio-openssl = { version = "0.6.4", optional = true }
-tokio-rustls = { version = "0.24.1", optional = true } # >=0.25 doesn't compile
+tokio-openssl = { version = "0.6", optional = true }
+tokio-rustls = { version = "0.24", optional = true }
 tower-service = "0.3"
 
 ## proxy-protocol
 ppp = { version = "2.2.0", optional = true }
 
 [dev-dependencies]
-axum = "0.7.5"
-hyper = { version = "1.4.1", features = ["full"] }
+axum = "0.6"
+hyper = { version = "0.14.27", features = ["full"] }
 tokio = { version = "1.40.0", features = ["full"] }
-tower = { version = "0.5.0", features = ["util"] }
-tower-http = { version = "0.5.2", features = ["add-extension"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.4.4", features = ["add-extension"] }
 
 [package.metadata.docs.rs]
 all-features = true
