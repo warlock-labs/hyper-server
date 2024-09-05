@@ -3,27 +3,27 @@
 //! response, and gracefully shut down the server when a termination signal is received.
 
 use http_body_util::Full;
-use hyper::service::service_fn;
 use hyper::{
     body::{Bytes, Incoming},
     server::conn::http1,
     Request, Response,
 };
 use hyper_util::rt::TokioIo;
-use std::sync::Arc;
+use hyper_util::service::TowerToHyperService;
 use std::{convert::Infallible, net::SocketAddr};
 use tokio::net::TcpListener;
+use tower::ServiceBuilder;
 
 /// A simple handler that responds with "Hello, World!" for any incoming request.
 ///
 /// This function serves as our basic request handler, demonstrating a minimal
 /// HTTP service implementation.
-async fn hello(_: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+pub async fn hello(_: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
 }
 
 /// Represents our HTTP server.
-struct Server {
+pub struct Server {
     /// The socket address on which the server will listen.
     socket_addr: SocketAddr,
 }
@@ -34,7 +34,7 @@ impl Server {
     /// # Arguments
     ///
     /// * `addr` - The socket address on which the server will listen.
-    async fn new(addr: SocketAddr) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn new(addr: SocketAddr) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         Ok(Server { socket_addr: addr })
     }
 
@@ -42,7 +42,7 @@ impl Server {
     ///
     /// This function uses tokio's signal handling to wait for a CTRL+C signal,
     /// which will trigger the graceful shutdown of our server.
-    async fn shutdown_signal() {
+    pub async fn shutdown_signal() {
         tokio::signal::ctrl_c()
             .await
             .expect("failed to install CTRL+C signal handler");
@@ -53,12 +53,12 @@ impl Server {
     /// This method sets up the TCP listener, initializes the HTTP server,
     /// and enters the main service loop. It handles incoming connections
     /// and manages the graceful shutdown process.
-    async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn serve(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Bind to the specified address
         let listener = TcpListener::bind(self.socket_addr).await?;
 
         // Specify our HTTP settings (http1, http2, auto all work)
-        let mut http = http1::Builder::new();
+        let http = http1::Builder::new();
 
         // Initialize the graceful shutdown mechanism
         let graceful = hyper_util::server::graceful::GracefulShutdown::new();
@@ -74,8 +74,13 @@ impl Server {
                 // Handle incoming connections
                 Ok((stream, _addr)) = listener.accept() => {
                     let io = TokioIo::new(stream);
+                    // Create a tower service
+                    let svc = tower::service_fn(hello);
+                    let svc = ServiceBuilder::new().service(svc);
+                    // Convert to a hyper service
+                    let svc = TowerToHyperService::new(svc);
                     // Create a new service for each connection
-                    let conn = http.serve_connection(io, service_fn(hello));
+                    let conn = http.serve_connection(io, svc);
                     // Watch the connection for graceful shutdown
                     let fut = graceful.watch(conn);
                     // Spawn a new task for each connection
@@ -106,15 +111,6 @@ impl Server {
             }
         }
     }
-}
-
-/// The main function that sets up and runs the server.
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Set up the server to listen on 127.0.0.1:3000
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    let mut server = Server::new(addr).await?;
-    server.serve().await
 }
 
 #[cfg(test)]
