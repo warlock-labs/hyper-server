@@ -15,6 +15,3 @@ settings.yaml
 
 # lcov
 lcov.info
-
-# Ignore cargo lock for library
-Cargo.lock
