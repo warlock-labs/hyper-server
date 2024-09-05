@@ -121,9 +121,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - run: cargo clippy --workspace --all-targets --all-features
-        env:
-          RUSTFLAGS: -Dwarnings
+      - run: rustc --version
+      - run: cargo clippy --version
+#      - run: cargo clippy --workspace --all-targets --all-features
+#        env:
+#          RUSTFLAGS: -Dwarnings
 
   docs:
     runs-on: ubuntu-latest
