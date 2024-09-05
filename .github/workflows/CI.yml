@@ -13,7 +13,6 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-
 jobs:
   test:
     name: test ${{ matrix.rust }} ${{ matrix.flags }}
