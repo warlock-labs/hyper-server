@@ -14,7 +14,15 @@ version = "1.0.0"
 [dependencies]
 http-body-util = "0.1.2"
 hyper = { version = "1.4.1", features = ["server"] }
-hyper-util = { version = "0.1.7", features = ["service", "tokio", "http1"] }
+hyper-util = { version = "0.1.7", features = ["service", "tokio", "http1", "server", "client", "client-legacy", "server-graceful"] }
 tokio = { version = "1.39.3", features = ["rt", "rt-multi-thread", "macros"] }
 tower = { version = "0.5.0", features = ["util"] }
 tracing = "0.1.40"
+bytes = "1.7.1"
+nix = "0.29.0"
+
+[dev-dependencies]
+ctrlc = "3.4.5"
+hyper = { version = "1.4.1", features = ["client"] }
+tokio = { version = "1.39.3", features = ["io-util", "signal"] }
+tokio-stream = "0.1.15"
