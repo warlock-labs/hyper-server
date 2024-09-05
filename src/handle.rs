@@ -64,7 +64,7 @@ impl Handle {
     /// # Parameters
     ///
     /// - `duration`: Maximum time to wait for active connections to close. `None` means the server
-    /// will wait indefinitely.
+    ///   will wait indefinitely.
     pub fn graceful_shutdown(&self, duration: Option<Duration>) {
         *self.inner.graceful_dur.lock().unwrap() = duration;
         self.inner.graceful.notify_waiters();
