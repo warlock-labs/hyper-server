@@ -54,6 +54,7 @@ use tokio::{
     time::timeout,
 };
 use tower_service::Service;
+use futures_util::FutureExt;
 
 pub(crate) mod future;
 use self::future::ProxyProtocolAcceptorFuture;
@@ -327,7 +328,7 @@ where
     >;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
-        let future = Box::pin(read_proxy_header(stream));
+        let future = read_proxy_header(stream).boxed();
 
         ProxyProtocolAcceptorFuture::new(
             timeout(self.parsing_timeout, future),
