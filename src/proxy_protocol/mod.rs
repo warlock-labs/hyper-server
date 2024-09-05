@@ -46,6 +46,7 @@ use std::{
     time::Duration,
 };
 
+use futures_util::FutureExt;
 use http::HeaderValue;
 use http::Request;
 use ppp::{v1, v2, HeaderResult};
@@ -54,7 +55,6 @@ use tokio::{
     time::timeout,
 };
 use tower_service::Service;
-use futures_util::FutureExt;
 
 pub(crate) mod future;
 use self::future::ProxyProtocolAcceptorFuture;
