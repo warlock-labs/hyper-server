@@ -20,6 +20,7 @@ use tokio::net::TcpListener;
 use tower_service::Service;
 use hyper_server::CompositeService;
 
+
 // Type alias for the complex error type
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -90,15 +91,17 @@ impl Server {
         println!("Server listening on {}", self.socket_addr);
 
         // Main server loop
-        let services = self.services.clone();
         loop {
             tokio::select! {
                 // Handle incoming connections
                 Ok((stream, _addr)) = listener.accept() => {
                     let io = TokioIo::new(stream);
 
+                    // make copy of services
+                    let svc = self.services.clone();
+
                     // Create a new service for each connection
-                    let conn = http.serve_connection(io, services);
+                    let conn = http.serve_connection(io, svc);
                     // Watch the connection for graceful shutdown
                     let fut = graceful.watch(conn);
 

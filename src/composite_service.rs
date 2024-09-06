@@ -13,6 +13,7 @@ pub enum CompositeError<E> {
 }
 
 /// A composite tower service
+#[derive(Clone)]
 pub struct CompositeService<S, Request> {
     services: Arc<Mutex<Vec<S>>>,
     _phantom: std::marker::PhantomData<Request>,
