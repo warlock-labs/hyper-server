@@ -1,5 +1,6 @@
 //! This feature allows the `hyper_server` to be used behind a layer 4 load balancer whilst the proxy
 //! protocol is enabled to preserve the client IP address and port.
+//!
 //! See The PROXY protocol spec for more details: <https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt>.
 //!
 //! Any client address found in the proxy protocol header is forwarded on in the HTTP `forwarded`

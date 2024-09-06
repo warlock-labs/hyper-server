@@ -12,6 +12,7 @@ use tower_service::Service;
 // TODO(Document the types here to disable the clippy annotation)
 
 /// An alias trait for the [`Service`] trait, specialized with required bounds for the server's service function.
+///
 /// This trait has been sealed, ensuring it cannot be implemented by types outside of this crate.
 ///
 /// It provides constraints for the body data, errors, and asynchronous behavior that fits the server's needs.
@@ -72,6 +73,7 @@ where
 }
 
 /// A variant of the [`MakeService`] trait that accepts a `&Target` reference.
+///
 /// This trait has been sealed, ensuring it cannot be implemented by types outside of this crate.
 /// It is specifically designed for the server's `serve` function.
 ///

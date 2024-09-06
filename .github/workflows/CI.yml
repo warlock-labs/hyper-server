@@ -123,9 +123,9 @@ jobs:
           cache-on-failure: true
       - run: rustc --version
       - run: cargo clippy --version
-#      - run: cargo clippy --workspace --all-targets --all-features
-#        env:
-#          RUSTFLAGS: -Dwarnings
+      - run: cargo clippy --workspace --all-targets --all-features
+        env:
+          RUSTFLAGS: -Dwarnings
 
   docs:
     runs-on: ubuntu-latest
