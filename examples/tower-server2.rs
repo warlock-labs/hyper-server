@@ -9,23 +9,49 @@ use hyper::{
 };
 use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
-use http_body_util::Full;
-use std::{convert::Infallible, future, net::SocketAddr};
-use hyper::service::Service;
+use http_body_util::{Full, BodyExt};
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
-
-use hyper::service::Service as HyperService;
 use tower::{Layer, Service as TowerService};
+use tower::layer::util::Stack;
 
-type BoxBody = http_body_util::combinators::BoxBody<hyper::body::Bytes, hyper::Error>;
+type BoxBody = http_body_util::combinators::BoxBody<Bytes, hyper::Error>;
+
+
+pub struct ServerBuilder<L> {
+    layers: L,
+}
 
 pub struct Server<S> {
     service: S,
 }
 
-impl Server<()> {
+impl ServerBuilder<tower::layer::util::Identity> {
     pub fn new() -> Self {
-        Server { service: () }
+        ServerBuilder {
+            layers: tower::layer::util::Identity::new(),
+        }
+    }
+}
+
+impl<L> ServerBuilder<L> {
+    pub fn layer<NewLayer>(self, layer: NewLayer) -> ServerBuilder<Stack<NewLayer, L>> {
+        ServerBuilder {
+            layers: Stack::new(layer, self.layers),
+        }
+    }
+
+    pub fn service<S>(self, service: S) -> Server<L::Service>
+    where
+        L: Layer<S> + Send + Sync + 'static,
+        S: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
+        S::Future: Send + 'static,
+        L::Service: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
+        <L::Service as TowerService<Request<Incoming>>>::Future: Send + 'static,
+    {
+        Server {
+            service: self.layers.layer(service),
+        }
     }
 }
 
@@ -34,25 +60,6 @@ where
     S: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
     S::Future: Send + 'static,
 {
-    pub fn layer<L>(self, layer: L) -> Server<L::Service>
-    where
-        L: Layer<S> + Send + Sync + 'static,
-        L::Service: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
-        <L::Service as TowerService<Request<Incoming>>>::Future: Send + 'static,
-    {
-        Server {
-            service: layer.layer(self.service),
-        }
-    }
-
-    pub fn service<NewS>(self, service: NewS) -> Server<NewS>
-    where
-        NewS: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
-        NewS::Future: Send + 'static,
-    {
-        Server { service }
-    }
-
     pub async fn serve(self, addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(addr).await?;
         let http = http1::Builder::new();
@@ -107,8 +114,12 @@ where
 ///
 /// This function serves as our basic request handler, demonstrating a minimal
 /// HTTP service implementation.
-pub async fn hello(_: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+pub async fn hello(_: Request<Incoming>) -> Result<Response<BoxBody>, hyper::Error> {
+    Ok(Response::new(
+        Full::new(Bytes::from("Hello, World!"))
+            .map_err(|never| match never {})
+            .boxed()
+    ))
 }
 
 
@@ -117,7 +128,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 54321));
     let svc = tower::service_fn(hello);
 
-    Server::new()
+    ServerBuilder::new()
+        .layer(tower::limit::ConcurrencyLimitLayer::new(64))
         .service(svc)
         .serve(addr)
         .await?;
