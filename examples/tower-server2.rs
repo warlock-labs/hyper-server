@@ -11,68 +11,48 @@ use hyper_util::rt::TokioIo;
 use hyper_util::service::TowerToHyperService;
 use http_body_util::Full;
 use std::{convert::Infallible, future, net::SocketAddr};
-use std::sync::Arc;
 use hyper::service::Service;
 use tokio::net::TcpListener;
-use tower::layer::util::{Identity, Stack};
-use tower::{Layer, ServiceBuilder};
-use tower::util::BoxService;
+
+use hyper::service::Service as HyperService;
+use tower::{Layer, Service as TowerService};
 
 type BoxBody = http_body_util::combinators::BoxBody<hyper::body::Bytes, hyper::Error>;
 
-
-pub struct Server<L = tower::layer::util::Identity> {
-    /// The layer stack that will be applied to each service
-    builder: Arc<L>,
+pub struct Server<S> {
+    service: S,
 }
 
-impl Default for Server<tower::layer::util::Identity> {
-    fn default() -> Self {
-        Self {
-            builder: Arc::new(tower::layer::util::Identity::new()),
-        }
+impl Server<()> {
+    pub fn new() -> Self {
+        Server { service: () }
     }
 }
 
-impl Server {
-    fn new() -> Self {
-        Server::default()
-    }
-}
-
-impl<L> Server<L>
+impl<S> Server<S>
 where
-    L: Layer<BoxService<hyper::Request<hyper::body::Incoming>, hyper::Response<BoxBody>, hyper::Error>> + Send + Sync + 'static,
-    L::Service: Send + 'static,
+    S: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
+    S::Future: Send + 'static,
 {
-    /// Add layer
-    pub fn layer<NewLayer>(self, layer: NewLayer) -> Server<Stack<NewLayer, L>>
+    pub fn layer<L>(self, layer: L) -> Server<L::Service>
     where
-        NewLayer: Layer<BoxService<hyper::Request<hyper::body::Incoming>, hyper::Response<BoxBody>, hyper::Error>> + Send + Sync + 'static,
+        L: Layer<S> + Send + Sync + 'static,
+        L::Service: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
+        <L::Service as TowerService<Request<Incoming>>>::Future: Send + 'static,
     {
         Server {
-            builder: Arc::new(ServiceBuilder::new().layer(layer).chain(Arc::try_unwrap(self.builder).unwrap_or_else(|arc| (*arc).clone()))),
+            service: layer.layer(self.service),
         }
     }
 
-    /// Add service
-    pub fn service<S>(self, svc: S) -> Self
+    pub fn service<NewS>(self, service: NewS) -> Server<NewS>
     where
-        S: Service<hyper::Request<hyper::body::Incoming>, Response = hyper::Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
-        S::Future: Send + 'static,
+        NewS: TowerService<Request<Incoming>, Response = Response<BoxBody>, Error = hyper::Error> + Clone + Send + 'static,
+        NewS::Future: Send + 'static,
     {
-        let builder = self.builder.clone();
-        Server {
-            builder: Arc::new(ServiceBuilder::new().service_fn(move |req| {
-                let svc = builder.service(svc.clone());
-                svc.call(req)
-            })),
-        }
+        Server { service }
     }
 
-
-    /// Starts the server and handles incoming connections.
-    /// Starts the server and handles incoming connections.
     pub async fn serve(self, addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let listener = TcpListener::bind(addr).await?;
         let http = http1::Builder::new();
@@ -85,9 +65,9 @@ where
             tokio::select! {
                 Ok((stream, _)) = listener.accept() => {
                     let io = TokioIo::new(stream);
-                    let builder = self.builder.clone();
+                    let service = self.service.clone();
 
-                    let svc = TowerToHyperService::new(self.builder.clone());
+                    let svc = TowerToHyperService::new(service);
                     let conn = http.serve_connection(io, svc);
                     let fut = graceful.watch(conn);
 
