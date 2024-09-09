@@ -59,9 +59,9 @@ impl Server {
                     let io = TokioIo::new(stream);
                     // Create a tower service
                     let svc = tower::service_fn(hello);
-                    let svc = ServiceBuilder::new().service(svc);
+                    let remapped = ServiceBuilder::new().service(svc.clone());
                     // Convert to a hyper service
-                    let svc = TowerToHyperService::new(svc);
+                    let svc = TowerToHyperService::new(remapped);
                     // Create a new service for each connection
                     let conn = http.serve_connection(io, svc);
                     // Watch the connection for graceful shutdown

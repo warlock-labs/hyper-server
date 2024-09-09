@@ -40,12 +40,9 @@ nix = { version = "0.29.0", features = ["signal"] }
 
 [[example]]
 name = "tower-server1"
-path = "examples/tower-server1.rs"
 
 [[example]]
 name = "tower-server2"
-path = "examples/tower-server2.rs"
 
 [[example]]
 name = "tower-client"
-path = "examples/tower-client.rs"
