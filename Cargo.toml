@@ -23,9 +23,12 @@ tokio-rustls = "0.26.0"
 tower = { version = "0.5.1", features = ["util"] }
 tracing = "0.1.40"
 http-body = "1.0.1"
-tokio-stream = "0.1.16"
+tokio-stream = { version = "0.1.16", features = ["net"] }
 bytes = "1.7.1"
 pin-project = "1.1.5"
+async-stream = "0.3.5"
+futures = "0.3.30"
 
 [dev-dependencies]
-tokio = { version = "1.40.0", features = ["macros"] }
+tokio = { version = "1.0", features = ["rt", "net", "test-util", "macros"] }
+tokio-test = "0.4.4"
