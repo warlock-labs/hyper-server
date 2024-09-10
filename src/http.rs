@@ -130,6 +130,29 @@ pub(crate) async fn serve_http_connection<B, IO, S, E>(
     });
 }
 
+/// Serves HTTP requests with graceful shutdown capability.
+///
+/// This function sets up an HTTP server that can handle incoming connections and
+/// process requests using the provided service. It also supports graceful shutdown.
+///
+/// # Type Parameters
+///
+/// * `S`: The service type that processes HTTP requests.
+/// * `I`: The incoming stream of IO objects.
+/// * `F`: The future type for the shutdown signal.
+/// * `IO`: The I/O type for the HTTP connection.
+/// * `IE`: The error type for the incoming stream.
+/// * `ResBody`: The response body type.
+///
+/// # Arguments
+///
+/// * `service`: The service used to process HTTP requests.
+/// * `incoming`: The stream of incoming connections.
+/// * `signal`: An optional future that, when resolved, signals the server to shut down gracefully.
+///
+/// # Returns
+///
+/// A `Result` indicating success or failure of the server operation.
 pub(crate) async fn serve_http_with_shutdown<S, I, F, IO, IE, ResBody>(
     service: S,
     incoming: I,
@@ -146,15 +169,16 @@ where
     ResBody: Body<Data = Bytes> + Send + Sync + 'static,
     ResBody::Error: Into<crate::Error> + Send + Sync,
 {
-    let incoming = crate::tcp::serve_tcp_incoming(
-        incoming
-    );
+    // Prepare the incoming stream of TCP connections
+    let incoming = crate::tcp::serve_tcp_incoming(incoming);
 
+    // Set up the HTTP connection builder
     let server = {
         let mut builder = HttpConnectionBuilder::new(TokioExecutor::new());
         builder
     };
 
+    // Create a channel for signaling graceful shutdown
     let (signal_tx, signal_rx) = tokio::sync::watch::channel(());
     let signal_tx = Arc::new(signal_tx);
 
@@ -162,41 +186,53 @@ where
     let mut sig = pin!(Fuse { inner: signal });
     let mut incoming = pin!(incoming);
 
+    // Main server loop
     loop {
         tokio::select! {
-                _ = &mut sig => {
-                    trace!("signal received, shutting down");
-                    break;
-                },
-                io = incoming.next() => {
-                    let io = match io {
-                        Some(Ok(io)) => io,
-                        Some(Err(e)) => {
-                            trace!("error accepting connection: {:#}", e);
-                            continue;
-                        },
-                        None => {
-                            break
-                        },
-                    };
+            // Handle shutdown signal
+            _ = &mut sig => {
+                trace!("signal received, shutting down");
+                break;
+            },
+            // Handle incoming connections
+            io = incoming.next() => {
+                let io = match io {
+                    Some(Ok(io)) => io,
+                    Some(Err(e)) => {
+                        trace!("error accepting connection: {:#}", e);
+                        continue;
+                    },
+                    None => {
+                        break
+                    },
+                };
 
-                    trace!("connection accepted");
+                trace!("connection accepted");
 
-                    let hyper_io = TokioIo::new(io);
-                    let hyper_svc = service.clone();
+                // Prepare the connection for hyper
+                let hyper_io = TokioIo::new(io);
+                let hyper_svc = service.clone();
 
-                    serve_http_connection(hyper_io, hyper_svc, server.clone(), graceful.then(|| signal_rx.clone()), None).await;
-                }
+                // Serve the HTTP connection
+                serve_http_connection(
+                    hyper_io,
+                    hyper_svc,
+                    server.clone(),
+                    graceful.then(|| signal_rx.clone()),
+                    None
+                ).await;
             }
+        }
     }
 
+    // Handle graceful shutdown
     if graceful {
         let _ = signal_tx.send(());
         drop(signal_rx);
         trace!(
-                "waiting for {} connections to close",
-                signal_tx.receiver_count()
-            );
+            "waiting for {} connections to close",
+            signal_tx.receiver_count()
+        );
 
         // Wait for all connections to close
         signal_tx.closed().await;
