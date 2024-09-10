@@ -123,12 +123,13 @@ pub(crate) async fn serve_http_connection<B, IO, S, E>(
 ///
 /// # Type Parameters
 ///
-/// * `S`: The service type that processes HTTP requests.
-/// * `I`: The incoming stream of IO objects.
+/// * `E`: The executor type for the HTTP server connection.
 /// * `F`: The future type for the shutdown signal.
+/// * `I`: The incoming stream of IO objects.
 /// * `IO`: The I/O type for the HTTP connection.
 /// * `IE`: The error type for the incoming stream.
 /// * `ResBody`: The response body type.
+/// * `S`: The service type that processes HTTP requests.
 ///
 /// # Arguments
 ///
@@ -139,7 +140,7 @@ pub(crate) async fn serve_http_connection<B, IO, S, E>(
 /// # Returns
 ///
 /// A `Result` indicating success or failure of the server operation.
-pub(crate) async fn serve_http_with_shutdown<S, I, F, IO, IE, E, ResBody>(
+pub(crate) async fn serve_http_with_shutdown<E, F, I, IO, IE, ResBody, S>(
     service: S,
     incoming: I,
     builder: HttpConnectionBuilder<E>,
