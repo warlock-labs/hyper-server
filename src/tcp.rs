@@ -17,10 +17,19 @@ use tracing::debug;
 ///
 /// * `ControlFlow::Continue(())` if the error is non-fatal and the accept loop should continue.
 /// * `ControlFlow::Break(Error)` if the error is fatal and the accept loop should terminate.
-pub(crate) fn handle_accept_error(e: impl Into<Error>) -> ControlFlow<Error> {
+///
+/// # Error Handling
+///
+/// The function categorizes errors as follows:
+/// - Non-fatal errors: ConnectionAborted, Interrupted, InvalidData, WouldBlock
+/// - Fatal errors: All other error types
+fn handle_accept_error(e: impl Into<Error>) -> ControlFlow<Error> {
     let e = e.into();
     debug!(error = %e, "TCP accept loop error");
+
+    // Check if the error is an I/O error
     if let Some(e) = e.downcast_ref::<io::Error>() {
+        // Determine if the error is non-fatal
         if matches!(
             e.kind(),
             io::ErrorKind::ConnectionAborted
@@ -32,6 +41,7 @@ pub(crate) fn handle_accept_error(e: impl Into<Error>) -> ControlFlow<Error> {
         }
     }
 
+    // If not a non-fatal I/O error, treat as fatal
     ControlFlow::Break(e)
 }
 
@@ -52,7 +62,13 @@ pub(crate) fn handle_accept_error(e: impl Into<Error>) -> ControlFlow<Error> {
 ///
 /// # Returns
 ///
-/// A pinned stream that yields `Result<IO, Error>` for each incoming connection.
+/// A stream that yields `Result<IO, Error>` for each incoming connection.
+///
+/// # Error Handling
+///
+/// This function uses `handle_accept_error` to determine whether to continue accepting
+/// connections after an error occurs. Non-fatal errors are logged and skipped, while
+/// fatal errors cause the stream to yield an error and terminate.
 pub(crate) fn serve_tcp_incoming<IO, IE>(
     incoming: impl Stream<Item = Result<IO, IE>> + Send + 'static,
 ) -> impl Stream<Item = Result<IO, crate::Error>>
@@ -112,6 +128,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_serve_tcp_incoming_success() -> Result<(), Box<dyn std::error::Error>> {
+        // Set up a TCP listener
         let addr = SocketAddr::from(([127, 0, 0, 1], 0));
         let listener = TcpListener::bind(addr).await?;
         let bound_addr = listener.local_addr()?;

@@ -9,6 +9,14 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, trace};
 
+/// Sleeps for a specified duration or waits indefinitely.
+///
+/// This function is used to implement timeouts or indefinite waiting periods.
+///
+/// # Arguments
+///
+/// * `wait_for` - An `Option<Duration>` specifying how long to sleep.
+///   If `None`, the function will wait indefinitely.
 async fn sleep_or_pending(wait_for: Option<Duration>) {
     match wait_for {
         Some(wait) => sleep(wait).await,
@@ -28,15 +36,15 @@ async fn sleep_or_pending(wait_for: Option<Duration>) {
 /// * `S`: The service type that processes HTTP requests.
 /// * `E`: The executor type for the HTTP server connection.
 ///
-/// # Parameters
+/// # Arguments
 ///
 /// * `hyper_io`: The I/O object representing the inbound hyper IO stream.
-/// * `hyper_svc`: The hyper `Service` implementation used to process HTTP requests.
-/// * `builder`: An `HttpConnBuilder` used to create and serve the HTTP connection.
+/// * `hyper_service`: The hyper `Service` implementation used to process HTTP requests.
+/// * `builder`: A `Builder` used to create and serve the HTTP connection.
 /// * `watcher`: An optional `tokio::sync::watch::Receiver` for graceful shutdown signaling.
 /// * `max_connection_age`: An optional `Duration` specifying the maximum age of the connection
 ///   before initiating a graceful shutdown.
-async fn serve_http_connection<B, IO, S, E>(
+pub(crate) async fn serve_http_connection<B, IO, S, E>(
     hyper_io: IO,
     hyper_service: S,
     builder: Builder<E>,
