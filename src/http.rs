@@ -139,9 +139,10 @@ pub(crate) async fn serve_http_connection<B, IO, S, E>(
 /// # Returns
 ///
 /// A `Result` indicating success or failure of the server operation.
-pub(crate) async fn serve_http_with_shutdown<S, I, F, IO, IE, ResBody>(
+pub(crate) async fn serve_http_with_shutdown<S, I, F, IO, IE, E, ResBody>(
     service: S,
     incoming: I,
+    builder: HttpConnectionBuilder<E>,
     signal: Option<F>,
 ) -> Result<(), super::Error>
 where
@@ -154,12 +155,10 @@ where
     S::Error: Into<Box<dyn std::error::Error + Send + Sync>> + Send,
     ResBody: Body<Data = Bytes> + Send + Sync + 'static,
     ResBody::Error: Into<crate::Error> + Send + Sync,
+    E: HttpServerConnExec<S::Future, ResBody> + Send + Sync + 'static,
 {
     // Prepare the incoming stream of TCP connections
     let incoming = crate::tcp::serve_tcp_incoming(incoming);
-
-    // Set up the HTTP connection builder
-    let server = { HttpConnectionBuilder::new(TokioExecutor::new()) };
 
     // Create a channel for signaling graceful shutdown
     let (signal_tx, signal_rx) = tokio::sync::watch::channel(());
@@ -200,7 +199,7 @@ where
                 serve_http_connection(
                     hyper_io,
                     hyper_svc,
-                    server.clone(),
+                    builder.clone(),
                     graceful.then(|| signal_rx.clone()),
                     None
                 ).await;
@@ -288,12 +287,15 @@ mod tests {
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
+        let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+
         let tower_service_fn = tower::service_fn(echo);
         let hyper_service = TowerToHyperService::new(tower_service_fn);
 
         let server = tokio::spawn(serve_http_with_shutdown(
             hyper_service,
             incoming,
+            http_server_builder,
             Some(async {
                 shutdown_rx.await.ok();
             }),
@@ -342,12 +344,15 @@ mod tests {
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
+        let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+
         let tower_service_fn = tower::service_fn(echo);
         let hyper_service = TowerToHyperService::new(tower_service_fn);
 
         let server = tokio::spawn(serve_http_with_shutdown(
             hyper_service,
             incoming,
+            http_server_builder,
             Some(async {
                 shutdown_rx.await.ok();
             }),
