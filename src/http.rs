@@ -1,35 +1,21 @@
-use tokio_stream::StreamExt as _;
-use tracing::{debug, trace};
-use hyper_util::{
-    rt::{TokioExecutor, TokioIo, TokioTimer},
-    server::conn::auto::{Builder as HttpConnectionBuilder, HttpServerConnExec},
-    service::TowerToHyperService,
-};
+use std::future::pending;
+use std::{future::Future, pin::pin, sync::Arc, time::Duration};
+
 use bytes::Bytes;
 use http::{Request, Response};
-use http_body_util::BodyExt;
-use hyper::{body::Incoming, service::Service as HyperService};
-use pin_project::pin_project;
-use std::future::pending;
-use std::{
-    convert::Infallible,
-    fmt,
-    future::{self, poll_fn, Future},
-    marker::PhantomData,
-    net::SocketAddr,
-    pin::{pin, Pin},
-    sync::Arc,
-    task::{ready, Context, Poll},
-    time::Duration,
-};
-use futures::Sink;
 use http_body::Body;
+use hyper::body::Incoming;
 use hyper::service::Service;
+use hyper_util::{
+    rt::{TokioExecutor, TokioIo},
+    server::conn::auto::{Builder as HttpConnectionBuilder, HttpServerConnExec},
+};
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::net::TcpListener;
 use tokio::time::sleep;
 use tokio_stream::Stream;
-use tokio_stream::wrappers::TcpListenerStream;
+use tokio_stream::StreamExt as _;
+use tracing::{debug, trace};
+
 use crate::fuse::Fuse;
 
 /// Sleeps for a specified duration or waits indefinitely.
@@ -173,10 +159,7 @@ where
     let incoming = crate::tcp::serve_tcp_incoming(incoming);
 
     // Set up the HTTP connection builder
-    let server = {
-        let mut builder = HttpConnectionBuilder::new(TokioExecutor::new());
-        builder
-    };
+    let server = { HttpConnectionBuilder::new(TokioExecutor::new()) };
 
     // Create a channel for signaling graceful shutdown
     let (signal_tx, signal_rx) = tokio::sync::watch::channel(());
@@ -243,21 +226,25 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::net::SocketAddr;
     use std::time::Duration;
-    use tokio::net::{TcpStream, TcpListener};
-    use tokio::sync::oneshot;
+
     use bytes::Bytes;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{body::Incoming, Request, Response, StatusCode};
+    use hyper_util::service::TowerToHyperService;
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::sync::oneshot;
     use tokio_stream::wrappers::TcpListenerStream;
-    use tower::ServiceExt;
+
+    use super::*;
 
     // Echo service
     async fn echo(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
         match (req.method(), req.uri().path()) {
-            (&hyper::Method::GET, "/") => Ok(Response::new(Full::new(Bytes::from("Hello, World!")))),
+            (&hyper::Method::GET, "/") => {
+                Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+            }
             (&hyper::Method::POST, "/echo") => {
                 let body = req.collect().await?.to_bytes();
                 Ok(Response::new(Full::new(body)))
@@ -277,7 +264,10 @@ mod tests {
         (incoming, server_addr)
     }
 
-    async fn send_request(addr: SocketAddr, req: Request<Empty<Bytes>>) -> hyper::Result<Response<Incoming>> {
+    async fn send_request(
+        addr: SocketAddr,
+        req: Request<Empty<Bytes>>,
+    ) -> hyper::Result<Response<Incoming>> {
         let stream = TcpStream::connect(addr).await.unwrap();
         let io = TokioIo::new(stream);
 
@@ -338,7 +328,8 @@ mod tests {
 
         // Shutdown the server
         shutdown_tx.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), server).await
+        tokio::time::timeout(Duration::from_secs(5), server)
+            .await
             .expect("Server didn't shut down within the timeout period")
             .unwrap()
             .unwrap();
@@ -381,7 +372,8 @@ mod tests {
 
         // Shutdown the server
         shutdown_tx.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), server).await
+        tokio::time::timeout(Duration::from_secs(5), server)
+            .await
             .expect("Server didn't shut down within the timeout period")
             .unwrap()
             .unwrap();

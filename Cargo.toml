@@ -12,24 +12,19 @@ repository = "https://github.com/valorem-labs-inc/hyper-server"
 version = "1.0.0"
 
 [dependencies]
+async-stream = "0.3.5"
+bytes = "1.7.1"
 http = "1.1.0"
+http-body = "1.0.1"
 http-body-util = "0.1.2"
 hyper = "1.4.1"
 hyper-util = { version = "0.1.8", features = ["server", "tokio", "server-auto", "server-graceful", "service"] }
-rustls = "0.23.13"
-rustls-pemfile = "2.1.3"
+pin-project = "1.1.5"
 tokio = { version = "1.40.0", features = ["net", "macros"] }
-tokio-rustls = "0.26.0"
+tokio-stream = { version = "0.1.16", features = ["net"] }
 tower = { version = "0.5.1", features = ["util"] }
 tracing = "0.1.40"
-http-body = "1.0.1"
-tokio-stream = { version = "0.1.16", features = ["net"] }
-bytes = "1.7.1"
-pin-project = "1.1.5"
-async-stream = "0.3.5"
-futures = "0.3.30"
 
 [dev-dependencies]
+hyper = { version = "1.4.1", features = ["client"] }
 tokio = { version = "1.0", features = ["rt", "net", "test-util"] }
-tokio-test = "0.4.4"
-hyper = {version = "1.4.1", features = ["client"] }
