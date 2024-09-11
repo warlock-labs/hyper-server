@@ -163,7 +163,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     info!("Server has shut down");
     // Et voilà!
-    // A flexible, high-performance server with custom services, middleware, http, tls, tcp, and graceful shutdown
+    // A flexible, high-performance server with custom services, middleware, 
+    // http, tls, tcp, and graceful shutdown
     Ok(())
 }
 ```
