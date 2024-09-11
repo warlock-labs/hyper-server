@@ -297,7 +297,7 @@ mod tests {
             debug!("Server task started");
             let mut tls_stream = Box::pin(tls_incoming(tcp_incoming, tls_acceptor));
             let result =
-                tokio::time::timeout(std::time::Duration::from_secs(1), tls_stream.next()).await;
+                tokio::time::timeout(std::time::Duration::from_millis(10), tls_stream.next()).await;
             debug!("Server task completed with result: {:?}", result.is_err());
             result
         });
@@ -376,50 +376,5 @@ mod tests {
                 }
             }
         }))
-    }
-
-    // Helper function to load certificates
-    fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
-        debug!("Loading certificates from {}", filename);
-        let certfile = std::fs::File::open(filename).map_err(|e| {
-            error!("Failed to open certificate file: {}", e);
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("failed to open {}: {}", filename, e),
-            )
-        })?;
-        let mut reader = io::BufReader::new(certfile);
-        let certs = rustls_pemfile::certs(&mut reader)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| {
-                error!("Failed to parse certificates: {}", e);
-                io::Error::new(io::ErrorKind::Other, e)
-            })?;
-        debug!("Loaded {} certificates", certs.len());
-        Ok(certs)
-    }
-
-    // Helper function to load private key
-    fn load_private_key(filename: &str) -> io::Result<PrivateKeyDer<'static>> {
-        debug!("Loading private key from {}", filename);
-        let keyfile = std::fs::File::open(filename).map_err(|e| {
-            error!("Failed to open private key file: {}", e);
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("failed to open {}: {}", filename, e),
-            )
-        })?;
-        let mut reader = io::BufReader::new(keyfile);
-        let key = rustls_pemfile::private_key(&mut reader)
-            .map_err(|e| {
-                error!("Failed to parse private key: {}", e);
-                io::Error::new(io::ErrorKind::Other, e)
-            })?
-            .ok_or_else(|| {
-                error!("No private key found in file");
-                io::Error::new(io::ErrorKind::Other, "no private key found")
-            })?;
-        debug!("Loaded private key");
-        Ok(key)
     }
 }

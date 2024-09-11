@@ -28,8 +28,8 @@ tokio-rustls = "0.26.0"
 tokio-stream = { version = "0.1.16", features = ["net"] }
 tower = { version = "0.5.1", features = ["util"] }
 tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
 
 [dev-dependencies]
 hyper = { version = "1.4.1", features = ["client"] }
 tokio = { version = "1.0", features = ["rt", "net", "test-util"] }
+tracing-subscriber = "0.3.18"
