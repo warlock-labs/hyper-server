@@ -1,5 +1,7 @@
+use crate::io::Transport;
 use std::future::pending;
 use std::{future::Future, pin::pin, sync::Arc, time::Duration};
+use tokio_rustls::TlsAcceptor;
 
 use bytes::Bytes;
 use http::{Request, Response};
@@ -116,10 +118,11 @@ pub async fn serve_http_connection<B, IO, S, E>(
     });
 }
 
-/// Serves HTTP requests with graceful shutdown capability.
+/// Serves HTTP/HTTPS requests with graceful shutdown capability.
 ///
-/// This function sets up an HTTP server that can handle incoming connections and
-/// process requests using the provided service. It also supports graceful shutdown.
+/// This function sets up an HTTP/HTTPS server that can handle incoming connections and
+/// process requests using the provided service. It supports both plain HTTP and HTTPS
+/// connections, as well as graceful shutdown.
 ///
 /// # Type Parameters
 ///
@@ -135,19 +138,209 @@ pub async fn serve_http_connection<B, IO, S, E>(
 ///
 /// * `service`: The service used to process HTTP requests.
 /// * `incoming`: The stream of incoming connections.
+/// * `builder`: The `HttpConnectionBuilder` used to configure the server.
+/// * `tls_config`: An optional TLS configuration for HTTPS support.
 /// * `signal`: An optional future that, when resolved, signals the server to shut down gracefully.
 ///
 /// # Returns
 ///
 /// A `Result` indicating success or failure of the server operation.
+///
+/// # Examples
+///
+/// These examples provide some very basic ways to use the server. With that said,
+/// the server is very flexible and can be used in a variety of ways. This is
+/// because you as the integrator have control over every level of the stack at
+/// construction, with all the native builders exposed via generics.
+///
+/// Setting up an HTTP server with graceful shutdown:
+///
+/// ```rust,no_run
+/// use std::convert::Infallible;
+/// use bytes::Bytes;
+/// use http_body_util::Full;
+/// use hyper::body::Incoming;
+/// use hyper::{Request, Response};
+/// use hyper_util::rt::TokioExecutor;
+/// use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
+/// use tokio::net::TcpListener;
+/// use tokio_stream::wrappers::TcpListenerStream;
+/// use tower::ServiceBuilder;
+/// use std::net::SocketAddr;
+///
+/// use hyper_server::serve_http_with_shutdown;
+///
+/// async fn hello(_: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+///     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+/// }
+///
+/// #[tokio::main(flavor = "current_thread")]
+/// async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+///     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+///     let listener = TcpListener::bind(addr).await?;
+///     let incoming = TcpListenerStream::new(listener);
+///
+///     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+///
+///     let builder = HttpConnectionBuilder::new(TokioExecutor::new());
+///     let svc = hyper::service::service_fn(hello);
+///     let svc = ServiceBuilder::new().service(svc);
+///
+///     tokio::spawn(async move {
+///         // Simulate a shutdown signal after 60 seconds
+///         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+///         let _ = shutdown_tx.send(());
+///     });
+///
+///     serve_http_with_shutdown(
+///         svc,
+///         incoming,
+///         builder,
+///         None, // No TLS config for plain HTTP
+///         Some(async {
+///             shutdown_rx.await.ok();
+///         }),
+///     ).await?;
+///
+///     Ok(())
+/// }
+/// ```
+///
+/// Setting up an HTTPS server:
+///
+/// ```rust,no_run
+/// use std::convert::Infallible;
+/// use std::sync::Arc;
+/// use bytes::Bytes;
+/// use http_body_util::Full;
+/// use hyper::body::Incoming;
+/// use hyper::{Request, Response};
+/// use hyper_util::rt::TokioExecutor;
+/// use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
+/// use tokio::net::TcpListener;
+/// use tokio_stream::wrappers::TcpListenerStream;
+/// use tower::ServiceBuilder;
+/// use rustls::ServerConfig;
+/// use std::io;
+/// use std::net::SocketAddr;
+/// use std::future::Future;
+///
+/// use hyper_server::{serve_http_with_shutdown, load_certs, load_private_key};
+///
+/// async fn hello(_: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+///     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+/// }
+///
+/// #[tokio::main(flavor = "current_thread")]
+/// async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+///     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+///     let listener = TcpListener::bind(addr).await?;
+///     let incoming = TcpListenerStream::new(listener);
+///
+///     let builder = HttpConnectionBuilder::new(TokioExecutor::new());
+///     let svc = hyper::service::service_fn(hello);
+///     let svc = ServiceBuilder::new().service(svc);
+///
+///     // Set up TLS config
+///     let certs = load_certs("examples/sample.pem")?;
+///     let key = load_private_key("examples/sample.rsa")?;
+///
+///     let config = ServerConfig::builder()
+///         .with_no_client_auth()
+///         .with_single_cert(certs, key)
+///         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+///     let tls_config = Arc::new(config);
+///
+///     serve_http_with_shutdown(
+///         svc,
+///         incoming,
+///         builder,
+///         Some(tls_config),
+///         Some(std::future::pending::<()>()), // A never-resolving future as a placeholder
+///     ).await?;
+///
+///     Ok(())
+/// }
+/// ```
+///
+/// Setting up an HTTPS server with a Tower service:
+///
+/// ```rust,no_run
+/// use std::convert::Infallible;
+/// use std::sync::Arc;
+/// use bytes::Bytes;
+/// use http_body_util::Full;
+/// use hyper::body::Incoming;
+/// use hyper::{Request, Response};
+/// use hyper_util::rt::TokioExecutor;
+/// use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
+/// use hyper_util::service::TowerToHyperService;
+/// use tokio::net::TcpListener;
+/// use tokio_stream::wrappers::TcpListenerStream;
+/// use tower::{ServiceBuilder, ServiceExt};
+/// use rustls::ServerConfig;
+/// use std::io;
+/// use std::net::SocketAddr;
+/// use std::future::Future;
+///
+/// use hyper_server::{serve_http_with_shutdown, load_certs, load_private_key};
+///
+/// async fn hello(_: Request<Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+///     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+/// }
+///
+/// #[tokio::main(flavor = "current_thread")]
+/// async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+///     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+///     let listener = TcpListener::bind(addr).await?;
+///     let incoming = TcpListenerStream::new(listener);
+///
+///     let builder = HttpConnectionBuilder::new(TokioExecutor::new());
+///
+///     // Set up the Tower service
+///     let svc = tower::service_fn(hello);
+///     let svc = ServiceBuilder::new()
+///         .service(svc);
+///
+///     // Convert the Tower service to a Hyper service
+///     let svc = TowerToHyperService::new(svc);
+///
+///     // Set up TLS config
+///     let certs = load_certs("examples/sample.pem")?;
+///     let key = load_private_key("examples/sample.rsa")?;
+///
+///     let config = ServerConfig::builder()
+///         .with_no_client_auth()
+///         .with_single_cert(certs, key)
+///         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+///     let tls_config = Arc::new(config);
+///
+///     serve_http_with_shutdown(
+///         svc,
+///         incoming,
+///         builder,
+///         Some(tls_config),
+///         Some(std::future::pending::<()>()), // A never-resolving future as a placeholder
+///     ).await?;
+///
+///     Ok(())
+/// }
+/// ```
+///
+/// # Notes
+///
+/// - The server will continue to accept new connections until the `signal` future resolves.
+/// - When using TLS, make sure to provide a properly configured `ServerConfig`.
+/// - The function will return when all connections have been closed after the shutdown signal.
 pub async fn serve_http_with_shutdown<E, F, I, IO, IE, ResBody, S>(
     service: S,
     incoming: I,
     builder: HttpConnectionBuilder<E>,
+    tls_config: Option<Arc<rustls::ServerConfig>>,
     signal: Option<F>,
 ) -> Result<(), super::Error>
 where
-    F: Future<Output = ()>,
+    F: Future<Output = ()> + Send + 'static,
     I: Stream<Item = Result<IO, IE>> + Send + 'static,
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     IE: Into<crate::Error> + Send + 'static,
@@ -168,6 +361,9 @@ where
     let graceful = signal.is_some();
     let mut sig = pin!(Fuse { inner: signal });
     let mut incoming = pin!(incoming);
+
+    // Create TLS acceptor if TLS config is provided
+    let tls_acceptor = tls_config.map(TlsAcceptor::from);
 
     // Main server loop
     loop {
@@ -193,7 +389,19 @@ where
                 trace!("connection accepted");
 
                 // Prepare the connection for hyper
-                let hyper_io = TokioIo::new(io);
+                let transport = if let Some(tls_acceptor) = &tls_acceptor {
+                    match tls_acceptor.accept(io).await {
+                        Ok(tls_stream) => Transport::new_tls(tls_stream),
+                        Err(e) => {
+                            debug!("TLS handshake failed: {:#}", e);
+                            continue;
+                        }
+                    }
+                } else {
+                    Transport::new_plain(io)
+                };
+
+                let hyper_io = TokioIo::new(transport);
                 let hyper_svc = service.clone();
 
                 // Serve the HTTP connection
@@ -226,21 +434,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::net::SocketAddr;
-    use std::time::Duration;
-
+    use super::*;
+    use crate::{load_certs, load_private_key};
     use bytes::Bytes;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{body::Incoming, Request, Response, StatusCode};
     use hyper_util::rt::TokioExecutor;
     use hyper_util::service::TowerToHyperService;
+    use rustls::ServerConfig;
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use std::time::Duration;
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::oneshot;
     use tokio_stream::wrappers::TcpListenerStream;
 
-    use super::*;
+    // Utility functions
 
-    // Echo service
     async fn echo(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
         match (req.method(), req.uri().path()) {
             (&hyper::Method::GET, "/") => {
@@ -265,11 +475,21 @@ mod tests {
         (incoming, server_addr)
     }
 
+    async fn create_test_tls_config() -> Arc<ServerConfig> {
+        let certs = load_certs("examples/sample.pem").unwrap();
+        let key = load_private_key("examples/sample.rsa").unwrap();
+        let config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .unwrap();
+        Arc::new(config)
+    }
+
     async fn send_request(
         addr: SocketAddr,
         req: Request<Empty<Bytes>>,
-    ) -> hyper::Result<Response<Incoming>> {
-        let stream = TcpStream::connect(addr).await.unwrap();
+    ) -> Result<Response<Incoming>, Box<dyn std::error::Error>> {
+        let stream = TcpStream::connect(addr).await?;
         let io = TokioIo::new(stream);
 
         let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
@@ -279,110 +499,358 @@ mod tests {
             }
         });
 
-        sender.send_request(req).await
+        Ok(sender.send_request(req).await?)
     }
 
-    #[tokio::test]
-    async fn test_serve_http_with_shutdown_basic() {
-        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-        let (incoming, server_addr) = setup_test_server(addr).await;
+    // HTTP Tests
 
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    mod http_tests {
+        use super::*;
 
-        let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+        #[tokio::test]
+        async fn test_http_basic_requests() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+            let (incoming, server_addr) = setup_test_server(addr).await;
 
-        let tower_service_fn = tower::service_fn(echo);
-        let hyper_service = TowerToHyperService::new(tower_service_fn);
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
-        let server = tokio::spawn(serve_http_with_shutdown(
-            hyper_service,
-            incoming,
-            http_server_builder,
-            Some(async {
-                shutdown_rx.await.ok();
-            }),
-        ));
+            let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+            let tower_service_fn = tower::service_fn(echo);
+            let hyper_service = TowerToHyperService::new(tower_service_fn);
 
-        // Test GET request
-        let req = Request::builder()
-            .uri("/")
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-        let res = send_request(server_addr, req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
-        let body = res.collect().await.unwrap().to_bytes();
-        assert_eq!(&body[..], b"Hello, World!");
+            let server = tokio::spawn(serve_http_with_shutdown(
+                hyper_service,
+                incoming,
+                http_server_builder,
+                None,
+                Some(async {
+                    shutdown_rx.await.ok();
+                }),
+            ));
 
-        // Test POST request
-        let req = Request::builder()
-            .method(hyper::Method::POST)
-            .uri("/echo")
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-        let res = send_request(server_addr, req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
+            // Test GET request
+            let req = Request::builder()
+                .uri("/")
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+            let res = send_request(server_addr, req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
+            let body = res.collect().await.unwrap().to_bytes();
+            assert_eq!(&body[..], b"Hello, World!");
 
-        // Test 404 response
-        let req = Request::builder()
-            .uri("/not_found")
-            .body(Empty::<Bytes>::new())
-            .unwrap();
-        let res = send_request(server_addr, req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+            // Test POST request
+            let req = Request::builder()
+                .method(hyper::Method::POST)
+                .uri("/echo")
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+            let res = send_request(server_addr, req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
 
-        // Shutdown the server
-        shutdown_tx.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), server)
-            .await
-            .expect("Server didn't shut down within the timeout period")
-            .unwrap()
-            .unwrap();
+            // Test 404 response
+            let req = Request::builder()
+                .uri("/not_found")
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+            let res = send_request(server_addr, req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+            shutdown_tx.send(()).unwrap();
+            server.await.unwrap().unwrap();
+        }
+
+        #[tokio::test]
+        async fn test_http_concurrent_requests() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+            let (incoming, server_addr) = setup_test_server(addr).await;
+
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+            let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+            let tower_service_fn = tower::service_fn(echo);
+            let hyper_service = TowerToHyperService::new(tower_service_fn);
+
+            let server = tokio::spawn(serve_http_with_shutdown(
+                hyper_service,
+                incoming,
+                http_server_builder,
+                None,
+                Some(async {
+                    shutdown_rx.await.ok();
+                }),
+            ));
+
+            let mut handles = vec![];
+            for _ in 0..10 {
+                let addr = server_addr;
+                let handle = tokio::spawn(async move {
+                    let req = Request::builder()
+                        .uri("/")
+                        .body(Empty::<Bytes>::new())
+                        .unwrap();
+                    let res = send_request(addr, req).await.unwrap();
+                    assert_eq!(res.status(), StatusCode::OK);
+                });
+                handles.push(handle);
+            }
+
+            for handle in handles {
+                handle.await.unwrap();
+            }
+
+            shutdown_tx.send(()).unwrap();
+            server.await.unwrap().unwrap();
+        }
+
+        #[tokio::test]
+        async fn test_http_graceful_shutdown() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+            let (incoming, server_addr) = setup_test_server(addr).await;
+
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+            let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+            let tower_service_fn = tower::service_fn(echo);
+            let hyper_service = TowerToHyperService::new(tower_service_fn);
+
+            let server = tokio::spawn(serve_http_with_shutdown(
+                hyper_service,
+                incoming,
+                http_server_builder,
+                None,
+                Some(async {
+                    shutdown_rx.await.ok();
+                }),
+            ));
+
+            // Send a request before shutdown
+            let req = Request::builder()
+                .uri("/")
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+            let res = send_request(server_addr, req)
+                .await
+                .expect("Failed to send initial request");
+            assert_eq!(res.status(), StatusCode::OK);
+
+            // Initiate graceful shutdown
+            shutdown_tx.send(()).unwrap();
+
+            // Wait for the server to shut down
+            let shutdown_timeout = Duration::from_millis(150);
+            let shutdown_result = tokio::time::timeout(shutdown_timeout, async {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                    let req = Request::builder()
+                        .uri("/")
+                        .body(Empty::<Bytes>::new())
+                        .unwrap();
+                    match send_request(server_addr, req).await {
+                        Ok(_) => continue, // Server still accepting connections
+                        Err(e) if e.to_string().contains("Connection refused") => {
+                            // Server has shut down as expected
+                            return Ok(());
+                        }
+                        Err(e) => return Err(e), // Unexpected error
+                    }
+                }
+            })
+            .await;
+
+            match shutdown_result {
+                Ok(Ok(())) => println!("Server shut down successfully"),
+                Ok(Err(e)) => panic!("Unexpected error during shutdown: {}", e),
+                Err(_) => panic!("Timeout waiting for server to shut down"),
+            }
+
+            // Ensure the server task completes
+            server.await.unwrap().unwrap();
+        }
     }
 
-    #[tokio::test]
-    async fn test_serve_http_with_concurrent_requests() {
-        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-        let (incoming, server_addr) = setup_test_server(addr).await;
+    // HTTPS Tests
 
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    mod https_tests {
+        use super::*;
 
-        let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+        async fn create_https_client() -> (
+            tokio_rustls::TlsConnector,
+            rustls::pki_types::ServerName<'static>,
+        ) {
+            let mut root_cert_store = rustls::RootCertStore::empty();
+            root_cert_store.add_parsable_certificates(load_certs("examples/sample.pem").unwrap());
 
-        let tower_service_fn = tower::service_fn(echo);
-        let hyper_service = TowerToHyperService::new(tower_service_fn);
+            let client_config = rustls::ClientConfig::builder()
+                .with_root_certificates(root_cert_store)
+                .with_no_client_auth();
 
-        let server = tokio::spawn(serve_http_with_shutdown(
-            hyper_service,
-            incoming,
-            http_server_builder,
-            Some(async {
-                shutdown_rx.await.ok();
-            }),
-        ));
+            let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(client_config));
+            let domain = rustls::pki_types::ServerName::try_from("localhost")
+                .expect("Failed to create ServerName");
 
-        let mut handles = vec![];
-        for _ in 0..10 {
-            let handle = tokio::spawn(async move {
-                let req = Request::builder()
-                    .uri("/")
-                    .body(Empty::<Bytes>::new())
+            (tls_connector, domain)
+        }
+
+        #[tokio::test]
+        async fn test_https_connection() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+            let (incoming, server_addr) = setup_test_server(addr).await;
+
+            let tls_config = create_test_tls_config().await;
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+            let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+            let tower_service_fn = tower::service_fn(echo);
+            let hyper_service = TowerToHyperService::new(tower_service_fn);
+
+            let server = tokio::spawn(serve_http_with_shutdown(
+                hyper_service,
+                incoming,
+                http_server_builder,
+                Some(tls_config),
+                Some(async {
+                    shutdown_rx.await.ok();
+                }),
+            ));
+
+            let (tls_connector, domain) = create_https_client().await;
+
+            let tcp_stream = TcpStream::connect(server_addr).await.unwrap();
+            let tls_stream = tls_connector.connect(domain, tcp_stream).await.unwrap();
+
+            let (mut sender, conn) =
+                hyper::client::conn::http1::handshake(TokioIo::new(tls_stream))
+                    .await
                     .unwrap();
-                let res = send_request(server_addr, req).await.unwrap();
-                assert_eq!(res.status(), StatusCode::OK);
+
+            tokio::spawn(async move {
+                if let Err(err) = conn.await {
+                    eprintln!("Connection failed: {:?}", err);
+                }
             });
-            handles.push(handle);
+
+            let req = Request::builder()
+                .uri("/")
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+
+            let res = sender.send_request(req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
+
+            let body = res.collect().await.unwrap().to_bytes();
+            assert_eq!(&body[..], b"Hello, World!");
+
+            shutdown_tx.send(()).unwrap();
+            server.await.unwrap().unwrap();
         }
 
-        for handle in handles {
-            handle.await.unwrap();
-        }
+        #[tokio::test]
+        async fn test_https_invalid_client_cert() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+            let (incoming, server_addr) = setup_test_server(addr).await;
 
-        // Shutdown the server
-        shutdown_tx.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(5), server)
-            .await
-            .expect("Server didn't shut down within the timeout period")
-            .unwrap()
-            .unwrap();
+            let tls_config = create_test_tls_config().await;
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+            let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+            let tower_service_fn = tower::service_fn(echo);
+            let hyper_service = TowerToHyperService::new(tower_service_fn);
+
+            let server = tokio::spawn(serve_http_with_shutdown(
+                hyper_service,
+                incoming,
+                http_server_builder,
+                Some(tls_config),
+                Some(async {
+                    shutdown_rx.await.ok();
+                }),
+            ));
+
+            let client_config = rustls::ClientConfig::builder()
+                .with_root_certificates(rustls::RootCertStore::empty())
+                .with_no_client_auth();
+
+            let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(client_config));
+
+            let tcp_stream = TcpStream::connect(server_addr).await.unwrap();
+            let domain = rustls::pki_types::ServerName::try_from("localhost").unwrap();
+
+            let result = tls_connector.connect(domain, tcp_stream).await;
+            assert!(
+                result.is_err(),
+                "Expected TLS connection to fail due to invalid client certificate"
+            );
+
+            shutdown_tx.send(()).unwrap();
+            server.await.unwrap().unwrap();
+        }
+        #[tokio::test]
+        async fn test_https_graceful_shutdown() {
+            let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+            let (incoming, server_addr) = setup_test_server(addr).await;
+
+            let tls_config = create_test_tls_config().await;
+            let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+            let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
+            let tower_service_fn = tower::service_fn(echo);
+            let hyper_service = TowerToHyperService::new(tower_service_fn);
+
+            let server = tokio::spawn(serve_http_with_shutdown(
+                hyper_service,
+                incoming,
+                http_server_builder,
+                Some(tls_config),
+                Some(async {
+                    shutdown_rx.await.ok();
+                }),
+            ));
+
+            let (tls_connector, domain) = create_https_client().await;
+
+            // Establish a connection
+            let tcp_stream = TcpStream::connect(server_addr).await.unwrap();
+            let tls_stream = tls_connector.connect(domain, tcp_stream).await.unwrap();
+
+            let (mut sender, conn) =
+                hyper::client::conn::http1::handshake(TokioIo::new(tls_stream))
+                    .await
+                    .unwrap();
+
+            tokio::spawn(async move {
+                if let Err(err) = conn.await {
+                    eprintln!("Connection failed: {:?}", err);
+                }
+            });
+
+            // Send a request
+            let req = Request::builder()
+                .uri("/")
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+
+            let res = sender.send_request(req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
+
+            // Initiate graceful shutdown
+            shutdown_tx.send(()).unwrap();
+
+            // Wait a bit to allow the server to start shutting down
+            tokio::time::sleep(Duration::from_millis(10)).await;
+
+            // Try to send another request, it should fail
+            let req = Request::builder()
+                .uri("/")
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+
+            let result = sender.send_request(req).await;
+            assert!(
+                result.is_err(),
+                "Expected request to fail after graceful shutdown"
+            );
+
+            server.await.unwrap().unwrap();
+        }
     }
 }

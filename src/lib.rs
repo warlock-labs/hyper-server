@@ -9,6 +9,7 @@ pub use tls::serve_tls_incoming;
 mod error;
 mod fuse;
 mod http;
+mod io;
 mod tcp;
 mod tls;
 
