@@ -1,6 +1,6 @@
-use std::{fs, io};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use crate::Error;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use std::{fs, io};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::{Stream, StreamExt};
@@ -41,35 +41,64 @@ where
     // Transform each item in the TCP stream into a TLS stream
     tcp_stream.then(move |result| {
         // Clone the TLS acceptor for each connection
+        // This is necessary because the acceptor is moved into the async block
         let tls = tls.clone();
 
         async move {
             match result {
-                // TODO(Can we get at the raw IO here so that it looks the same after the handshake?)
-                Ok(io) => tls.accept(io).await.map_err(Error::from),
-                // TODO(Unwrap into crate error and handle)
+                // If the TCP connection was successfully established
+                Ok(io) => {
+                    // Attempt to perform the TLS handshake
+                    // If successful, return the TLS stream; otherwise, wrap the error
+                    tls.accept(io).await.map_err(Error::from)
+                }
+                // If there was an error establishing the TCP connection, propagate it
                 Err(e) => Err(e),
             }
         }
     })
 }
 
-// Load the public certificate from a file.
+/// Load the public certificate from a file.
+///
+/// This function reads a PEM-encoded certificate file and returns a vector of
+/// parsed certificates.
+///
+/// # Arguments
+///
+/// * `filename`: The path to the certificate file.
+///
+/// # Returns
+///
+/// A `Result` containing a vector of `CertificateDer` on success, or an `io::Error` on failure.
 fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
-    // Open certificate file.
-    let certfile = fs::File::open(filename).unwrap();
+    // Open certificate file
+    let certfile = fs::File::open(filename)?;
     let mut reader = io::BufReader::new(certfile);
 
-    // Load and return certificate.
+    // Load and return certificates
+    // The `collect()` method is used to gather all certificates into a vector
     rustls_pemfile::certs(&mut reader).collect()
 }
 
-// Load the private key from a file.
+/// Load the private key from a file.
+///
+/// This function reads a PEM-encoded private key file and returns the parsed private key.
+///
+/// # Arguments
+///
+/// * `filename`: The path to the private key file.
+///
+/// # Returns
+///
+/// A `Result` containing a `PrivateKeyDer` on success, or an `io::Error` on failure.
 fn load_private_key(filename: &str) -> io::Result<PrivateKeyDer<'static>> {
-    // Open keyfile.
-    let keyfile = fs::File::open(filename).unwrap();
+    // Open keyfile
+    let keyfile = fs::File::open(filename)?;
     let mut reader = io::BufReader::new(keyfile);
 
-    // Load and return a single private key.
-    rustls_pemfile::private_key(&mut reader).map(|key| key.unwrap())
+    // Load and return a single private key
+    // The `?` operator is used for error propagation
+    rustls_pemfile::private_key(&mut reader)?
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "No private key found in file"))
 }
