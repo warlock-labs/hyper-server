@@ -7,7 +7,7 @@ use http_body::Body;
 use hyper::body::Incoming;
 use hyper::service::Service;
 use hyper_util::{
-    rt::{TokioExecutor, TokioIo},
+    rt::TokioIo,
     server::conn::auto::{Builder as HttpConnectionBuilder, HttpServerConnExec},
 };
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -232,6 +232,7 @@ mod tests {
     use bytes::Bytes;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{body::Incoming, Request, Response, StatusCode};
+    use hyper_util::rt::TokioExecutor;
     use hyper_util::service::TowerToHyperService;
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::oneshot;

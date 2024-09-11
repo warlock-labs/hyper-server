@@ -20,13 +20,13 @@ struct ErrorImpl {
 /// Enum representing different kinds of errors that can occur.
 /// Currently, only includes a Transport variant, but can be extended for more error types.
 #[derive(Debug)]
-pub(crate) enum Kind {
+pub enum Kind {
     Transport,
 }
 
 impl Error {
     /// Creates a new Error with a specific kind.
-    pub(crate) fn new(kind: Kind) -> Self {
+    pub fn new(kind: Kind) -> Self {
         Self {
             inner: ErrorImpl { kind, source: None },
         }
@@ -34,14 +34,14 @@ impl Error {
 
     /// Attaches a source error to this Error.
     /// This method consumes self and returns a new Error, allowing for method chaining.
-    pub(crate) fn with(mut self, source: impl Into<Source>) -> Self {
+    pub fn with(mut self, source: impl Into<Source>) -> Self {
         self.inner.source = Some(source.into());
         self
     }
 
     /// Creates a new Transport Error with the given source.
     /// This is a convenience method combining new() and with().
-    pub(crate) fn from_source(source: impl Into<crate::Error>) -> Self {
+    pub fn from_source(source: impl Into<crate::Error>) -> Self {
         Error::new(Kind::Transport).with(source)
     }
 

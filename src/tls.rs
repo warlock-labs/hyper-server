@@ -108,10 +108,9 @@ mod tests {
     use super::*;
     use crate::tcp::serve_tcp_incoming;
     use futures::StreamExt;
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+    use rustls::pki_types::{CertificateDer, ServerName};
     use rustls::{ClientConfig, ServerConfig};
     use std::net::SocketAddr;
-    use std::pin::Pin;
     use std::sync::Arc;
     use tokio::io::{AsyncRead, AsyncWrite};
     use tokio::net::{TcpListener, TcpStream};
