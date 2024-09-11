@@ -19,18 +19,18 @@ http = "1.1.0"
 http-body = "1.0.1"
 http-body-util = "0.1.2"
 hyper = "1.4.1"
+hyper-rustls = "0.27.3"
 hyper-util = { version = "0.1.8", features = ["server", "tokio", "server-auto", "server-graceful", "service"] }
 pin-project = "1.1.5"
+rand = "0.9.0-alpha.2"
 rustls = "0.23.13"
 rustls-pemfile = "2.1.3"
 tokio = { version = "1.40.0", features = ["net", "macros", "rt-multi-thread"] }
 tokio-rustls = "0.26.0"
 tokio-stream = { version = "0.1.16", features = ["net"] }
+tokio-util = "0.7.12"
 tower = { version = "0.5.1", features = ["util"] }
 tracing = "0.1.40"
-tokio-util = "0.7.12"
-hyper-rustls = "0.27.3"
-rand = "0.9.0-alpha.2"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }

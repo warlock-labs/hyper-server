@@ -1,26 +1,26 @@
+use bytes::Bytes;
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use futures::future::join_all;
+use http::{Request, Response, StatusCode, Uri};
+use http_body_util::{BodyExt, Empty, Full};
+use hyper::body::Incoming;
+use hyper_rustls::HttpsConnectorBuilder;
+use hyper_server::{load_certs, load_private_key, serve_http_with_shutdown};
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
+use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
+use hyper_util::service::TowerToHyperService;
 use rustls::ClientConfig;
 use rustls::RootCertStore;
+use rustls::ServerConfig;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use bytes::Bytes;
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
-use futures::future::join_all;
-use http::{Request, Response, StatusCode, Uri};
-use http_body_util::{Empty, Full, BodyExt};
-use hyper::body::Incoming;
-use hyper_util::rt::TokioExecutor;
-use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
-use rustls::ServerConfig;
 use tokio::net::TcpListener;
 use tokio::runtime::Runtime;
 use tokio::sync::{oneshot, Semaphore};
 use tokio_stream::wrappers::TcpListenerStream;
-use hyper_util::service::TowerToHyperService;
 use tracing::info;
-use hyper_server::{load_certs, load_private_key, serve_http_with_shutdown};
-use hyper_rustls::HttpsConnectorBuilder;
-use hyper_util::client::legacy::Client;
 
 async fn echo(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Error> {
     match (req.method(), req.uri().path()) {
@@ -28,7 +28,7 @@ async fn echo(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Er
         (&hyper::Method::POST, "/echo") => {
             let body = req.collect().await?.to_bytes();
             Ok(Response::new(Full::new(body)))
-        },
+        }
         _ => {
             let mut res = Response::new(Full::new(Bytes::from("Not Found")));
             *res.status_mut() = StatusCode::NOT_FOUND;
@@ -37,7 +37,10 @@ async fn echo(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Er
     }
 }
 
-async fn setup_server() -> Result<(TcpListenerStream, SocketAddr, Arc<ServerConfig>), Box<dyn std::error::Error + Send + Sync>> {
+async fn setup_server() -> Result<
+    (TcpListenerStream, SocketAddr, Arc<ServerConfig>),
+    Box<dyn std::error::Error + Send + Sync>,
+> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let listener = TcpListener::bind(addr).await?;
     let server_addr = listener.local_addr()?;
@@ -56,8 +59,8 @@ async fn setup_server() -> Result<(TcpListenerStream, SocketAddr, Arc<ServerConf
     Ok((incoming, server_addr, tls_config))
 }
 
-
-async fn start_server() -> Result<(SocketAddr, oneshot::Sender<()>), Box<dyn std::error::Error + Send + Sync>> {
+async fn start_server(
+) -> Result<(SocketAddr, oneshot::Sender<()>), Box<dyn std::error::Error + Send + Sync>> {
     let (incoming, server_addr, tls_config) = setup_server().await?;
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
@@ -69,15 +72,23 @@ async fn start_server() -> Result<(SocketAddr, oneshot::Sender<()>), Box<dyn std
             incoming,
             http_server_builder,
             Some(tls_config),
-            Some(async { shutdown_rx.await.ok(); }),
+            Some(async {
+                shutdown_rx.await.ok();
+            }),
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
     });
     Ok((server_addr, shutdown_tx))
 }
 
-async fn send_request(client: &Client<hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>, Empty<Bytes>>, url: Uri) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn send_request(
+    client: &Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        Empty<Bytes>,
+    >,
+    url: Uri,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let res = client.get(url).await?;
     assert_eq!(res.status(), StatusCode::OK);
     let body = res.into_body().collect().await?.to_bytes();
@@ -124,9 +135,8 @@ fn bench_server(c: &mut Criterion) {
     group.bench_function("single_request_latency", |b| {
         let client = client.clone();
         let url = url.clone();
-        b.to_async(&rt).iter(|| async {
-            send_request(&client, url.clone()).await.unwrap()
-        });
+        b.to_async(&rt)
+            .iter(|| async { send_request(&client, url.clone()).await.unwrap() });
     });
 
     // Throughput test
@@ -166,7 +176,11 @@ fn bench_server(c: &mut Criterion) {
                             send_request(&client, url).await
                         }
                     });
-                    join_all(requests).await.into_iter().collect::<Result<Vec<_>, _>>().unwrap()
+                    join_all(requests)
+                        .await
+                        .into_iter()
+                        .collect::<Result<Vec<_>, _>>()
+                        .unwrap()
                 });
             },
         );
@@ -191,7 +205,7 @@ fn bench_server(c: &mut Criterion) {
             let res = client.request(req).await.unwrap();
             assert_eq!(res.status(), StatusCode::OK);
             let body = res.into_body().collect().await.unwrap().to_bytes();
-            assert_eq!(&body[..], b"");  // The echo endpoint will return an empty body for an empty request
+            assert_eq!(&body[..], b""); // The echo endpoint will return an empty body for an empty request
         });
     });
 
