@@ -160,7 +160,8 @@ fn bench_server(c: &mut Criterion) {
             .with_no_client_auth();
         // Enable handshake resumption
         client_config.resumption = rustls::client::Resumption::in_memory_sessions(10240);
-        client_config.cert_compression_cache = Arc::new(rustls::compress::CompressionCache::default());
+        client_config.cert_compression_cache =
+            Arc::new(rustls::compress::CompressionCache::default());
         client_config.max_fragment_size = Some(16384); // Larger fragment size for powerful servers
         client_config.enable_early_data = true; // Enable 0-RTT data
 
@@ -170,8 +171,7 @@ fn bench_server(c: &mut Criterion) {
             .enable_http1()
             .build();
 
-        let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new())
-            .build(https);
+        let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new()).build(https);
 
         (server_addr, shutdown_tx, client)
     });

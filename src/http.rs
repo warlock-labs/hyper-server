@@ -98,7 +98,6 @@ pub async fn serve_http_connection<B, IO, S, E>(
                 .pipeline_flush(true)
                 .preserve_header_case(true)
                 .title_case_headers(false)
-
                 // HTTP/2 settings
                 .http2()
                 .initial_stream_window_size(Some(1024 * 1024))
