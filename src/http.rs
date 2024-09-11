@@ -53,7 +53,7 @@ async fn sleep_or_pending(wait_for: Option<Duration>) {
 /// * `watcher`: An optional `tokio::sync::watch::Receiver` for graceful shutdown signaling.
 /// * `max_connection_age`: An optional `Duration` specifying the maximum age of the connection
 ///   before initiating a graceful shutdown.
-pub(crate) async fn serve_http_connection<B, IO, S, E>(
+pub async fn serve_http_connection<B, IO, S, E>(
     hyper_io: IO,
     hyper_service: S,
     builder: HttpConnectionBuilder<E>,
@@ -140,7 +140,7 @@ pub(crate) async fn serve_http_connection<B, IO, S, E>(
 /// # Returns
 ///
 /// A `Result` indicating success or failure of the server operation.
-pub(crate) async fn serve_http_with_shutdown<E, F, I, IO, IE, ResBody, S>(
+pub async fn serve_http_with_shutdown<E, F, I, IO, IE, ResBody, S>(
     service: S,
     incoming: I,
     builder: HttpConnectionBuilder<E>,

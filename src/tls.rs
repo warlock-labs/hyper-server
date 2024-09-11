@@ -31,7 +31,7 @@ use tokio_stream::{Stream, StreamExt};
 ///
 /// - If the input `tcp_stream` yields an error, that error is propagated.
 /// - If the TLS handshake fails, the error is wrapped in the crate's `Error` type.
-pub(crate) fn tls_incoming<IO>(
+pub fn serve_tls_incoming<IO>(
     tcp_stream: impl Stream<Item = Result<IO, Error>>,
     tls: TlsAcceptor,
 ) -> impl Stream<Item = Result<tokio_rustls::server::TlsStream<IO>, Error>>
@@ -71,7 +71,7 @@ where
 /// # Returns
 ///
 /// A `Result` containing a vector of `CertificateDer` on success, or an `io::Error` on failure.
-fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
+pub fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
     // Open certificate file
     let certfile = fs::File::open(filename)?;
     let mut reader = io::BufReader::new(certfile);
@@ -92,7 +92,7 @@ fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
 /// # Returns
 ///
 /// A `Result` containing a `PrivateKeyDer` on success, or an `io::Error` on failure.
-fn load_private_key(filename: &str) -> io::Result<PrivateKeyDer<'static>> {
+pub fn load_private_key(filename: &str) -> io::Result<PrivateKeyDer<'static>> {
     // Open keyfile
     let keyfile = fs::File::open(filename)?;
     let mut reader = io::BufReader::new(keyfile);
