@@ -1,9 +1,9 @@
 [package]
-authors = ["0xAlcibiades <alcibiades.eth@protonmail.com>"]
+authors = ["0xAlcibiades <alcibiades@warlock.xyz>"]
 categories = ["asynchronous", "network-programming", "web-programming"]
 description = "High level server for hyper and tower."
 edition = "2021"
-homepage = "https://github.com/warlock-labls/hyper-server"
+homepage = "https://github.com/warlock-labs/hyper-server"
 keywords = ["tcp", "tls", "http", "hyper", "tokio"]
 license = "MIT"
 name = "hyper-server"
