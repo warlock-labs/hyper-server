@@ -32,8 +32,10 @@ where
                 self.project().inner.set(None);
                 output
             }),
-            // If inner is None, it means the future has already completed
+            // If inner is None, it means the future has already completed,
             // So we return Poll::Pending
+            // and yes, this is confusing and counterintuitive naming,
+            // but apparently this is how it's done.
             None => Poll::Pending,
         }
     }
