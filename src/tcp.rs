@@ -69,6 +69,7 @@ fn handle_accept_error(e: impl Into<Error>) -> ControlFlow<Error> {
 /// This function uses `handle_accept_error` to determine whether to continue accepting
 /// connections after an error occurs. Non-fatal errors are logged and skipped, while
 /// fatal errors cause the stream to yield an error and terminate.
+#[inline]
 pub fn serve_tcp_incoming<IO, IE>(
     incoming: impl Stream<Item = Result<IO, IE>> + Send + 'static,
 ) -> impl Stream<Item = Result<IO, crate::Error>>

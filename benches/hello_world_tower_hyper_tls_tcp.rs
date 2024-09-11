@@ -69,6 +69,7 @@ async fn setup_server() -> Result<
     config.max_fragment_size = Some(16384); // Larger fragment size for powerful servers
     config.send_half_rtt_data = true; // Enable 0.5-RTT data
     config.session_storage = ServerSessionMemoryCache::new(10240); // Larger session cache
+    config.cert_compression_cache = Arc::new(rustls::compress::CompressionCache::default());
     config.max_early_data_size = 16384; // Enable 0-RTT data
 
     let tls_config = Arc::new(config);
@@ -154,9 +155,15 @@ fn bench_server(c: &mut Criterion) {
         let mut root_cert_store = RootCertStore::empty();
         root_cert_store.add_parsable_certificates(load_certs("examples/sample.pem").unwrap());
 
-        let client_config = ClientConfig::builder()
+        let mut client_config = ClientConfig::builder()
             .with_root_certificates(root_cert_store)
             .with_no_client_auth();
+        // Enable handshake resumption
+        client_config.resumption = rustls::client::Resumption::in_memory_sessions(10240);
+        client_config.cert_compression_cache =
+            Arc::new(rustls::compress::CompressionCache::default());
+        client_config.max_fragment_size = Some(16384); // Larger fragment size for powerful servers
+        client_config.enable_early_data = true; // Enable 0-RTT data
 
         let https = HttpsConnectorBuilder::new()
             .with_tls_config(client_config)
@@ -198,7 +205,7 @@ fn bench_server(c: &mut Criterion) {
     });
 
     // Concurrency stress test
-    let concurrent_requests = vec![1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987]; // Fibonacci sequence
+    let concurrent_requests = vec![1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987]; // log sequence
     for &num_requests in &concurrent_requests {
         group.throughput(Throughput::Elements(num_requests as u64));
         group.bench_with_input(
