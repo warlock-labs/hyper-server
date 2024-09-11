@@ -1,3 +1,22 @@
+//! Hello World Benchmark for hyper-server
+//!
+//! This module implements a comprehensive benchmark for the hyper-server crate,
+//! testing its performance in various scenarios including latency, throughput,
+//! and concurrent requests.
+//!
+//! It uses a very basic echo service that responds with "Hello, World!" to GET requests
+//! and echoes back the request body for POST requests. The server is configured with
+//! an optimized ECDSA certificate and various TLS performance improvements.
+//! It exercises the full stack from Socket → TCP → TLS → HTTP/2 → hyper-server → tower-service.
+//! This allows developers of the library to optimize the full stack for performance.
+//! The library provides a detailed benchmark report with latency, throughput, and
+//! concurrency stress tests.
+//! It additionally has provision to generate flamegraphs for each benchmark run.
+//!
+//! For developers who use hyper-server, this provides a good starting point to
+//! understand the performance of the library
+//! and how to use it optimally in their applications.
+
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -12,6 +31,9 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
 use hyper_util::service::TowerToHyperService;
+use rcgen::{CertificateParams, DistinguishedName, KeyPair};
+use rustls::crypto::aws_lc_rs::Ticketer;
+use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use rustls::server::ServerSessionMemoryCache;
 use rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio::net::TcpSocket;
@@ -21,7 +43,7 @@ use tokio::time::{Duration, Instant};
 use tokio_stream::wrappers::TcpListenerStream;
 use tracing::info;
 
-use hyper_server::{load_certs, load_private_key, serve_http_with_shutdown};
+use hyper_server::serve_http_with_shutdown;
 
 /// Profiling module for generating flamegraphs during benchmarks
 ///
@@ -112,6 +134,75 @@ mod profiling {
     }
 }
 
+/// Holds the TLS configuration for both server and client
+struct TlsConfig {
+    server_config: ServerConfig,
+    client_config: ClientConfig,
+}
+
+/// Generates a shared TLS configuration for both server and client
+///
+/// This function creates a self-signed ECDSA certificate and configures both
+/// the server and client to use it. It also applies various optimizations
+/// to improve TLS performance.
+fn generate_shared_ecdsa_config() -> TlsConfig {
+    // Generate ECDSA key pair
+    let key_pair = KeyPair::generate().expect("Failed to generate key pair");
+
+    // Generate certificate parameters
+    let mut params = CertificateParams::new(vec!["localhost".to_string()])
+        .expect("Failed to create certificate params");
+    params.distinguished_name = DistinguishedName::new();
+
+    // Generate the self-signed certificate
+    let cert = params
+        .self_signed(&key_pair)
+        .expect("Failed to generate self-signed certificate");
+
+    // Serialize the certificate and private key
+    let cert_der = cert.der().to_vec();
+    let key_der = key_pair.serialize_der();
+
+    // Create Rustls certificate and private key
+    let cert = CertificateDer::from(cert_der);
+    let key = PrivatePkcs8KeyDer::from(key_der);
+
+    // Configure Server
+    let mut server_config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert.clone()], key.into())
+        .expect("Failed to configure server");
+
+    // Server optimizations
+    server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+    server_config.max_fragment_size = Some(16384);
+    server_config.send_tls13_tickets = 8; // Enable 0.5-RTT data
+    server_config.session_storage = ServerSessionMemoryCache::new(10240);
+    server_config.ticketer = Ticketer::new().unwrap();
+    server_config.max_early_data_size = 16384; // Enable 0-RTT data
+
+    // Configure Client
+    let mut root_store = RootCertStore::empty();
+    root_store
+        .add(cert)
+        .expect("Failed to add certificate to root store");
+
+    let mut client_config = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+
+    // Client optimizations
+    client_config.enable_sni = false; // Since we're using localhost
+    client_config.max_fragment_size = Some(16384);
+    client_config.enable_early_data = true; // Enable 0-RTT data
+    client_config.resumption = rustls::client::Resumption::in_memory_sessions(10240);
+
+    TlsConfig {
+        server_config,
+        client_config,
+    }
+}
+
 fn create_optimized_runtime(thread_count: usize) -> io::Result<Runtime> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(thread_count)
@@ -135,10 +226,8 @@ async fn echo(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, hyper::Er
     }
 }
 
-async fn setup_server() -> Result<
-    (TcpListenerStream, SocketAddr, Arc<ServerConfig>),
-    Box<dyn std::error::Error + Send + Sync>,
-> {
+async fn setup_server(
+) -> Result<(TcpListenerStream, SocketAddr), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let socket = TcpSocket::new_v4()?;
 
@@ -156,34 +245,14 @@ async fn setup_server() -> Result<
     let server_addr = listener.local_addr()?;
     let incoming = TcpListenerStream::new(listener);
 
-    // Load certificates and private key
-    let certs = load_certs("examples/sample.pem")?;
-    let key = load_private_key("examples/sample.rsa")?;
-
-    // TLS configuration
-    let mut config = ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(certs, key)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-
-    // ALPN configuration
-    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-
-    // Performance optimizations
-    config.max_fragment_size = Some(16384); // Larger fragment size for powerful servers
-    config.send_half_rtt_data = true; // Enable 0.5-RTT data
-    config.session_storage = ServerSessionMemoryCache::new(10240); // Larger session cache
-    config.cert_compression_cache = Arc::new(rustls::compress::CompressionCache::default());
-    config.max_early_data_size = 16384; // Enable 0-RTT data
-
-    let tls_config = Arc::new(config);
-
-    Ok((incoming, server_addr, tls_config))
+    Ok((incoming, server_addr))
 }
 
 async fn start_server(
+    tls_config: ServerConfig,
 ) -> Result<(SocketAddr, oneshot::Sender<()>), Box<dyn std::error::Error + Send + Sync>> {
-    let (incoming, server_addr, tls_config) = setup_server().await?;
+    let tls_config = Arc::new(tls_config);
+    let (incoming, server_addr) = setup_server().await?;
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     let http_server_builder = HttpConnectionBuilder::new(TokioExecutor::new());
 
@@ -256,24 +325,14 @@ fn bench_server(c: &mut Criterion) {
     let server_runtime = Arc::new(create_optimized_runtime(num_cpus::get() / 2).unwrap());
 
     let (server_addr, shutdown_tx, client) = server_runtime.block_on(async {
-        let (server_addr, shutdown_tx) = start_server().await.expect("Failed to start server");
+        let tls_config = generate_shared_ecdsa_config();
+        let (server_addr, shutdown_tx) = start_server(tls_config.server_config.clone())
+            .await
+            .expect("Failed to start server");
         info!("Server started on {}", server_addr);
 
-        let mut root_cert_store = RootCertStore::empty();
-        root_cert_store.add_parsable_certificates(load_certs("examples/sample.pem").unwrap());
-
-        let mut client_config = ClientConfig::builder()
-            .with_root_certificates(root_cert_store)
-            .with_no_client_auth();
-        // Enable handshake resumption
-        client_config.resumption = rustls::client::Resumption::in_memory_sessions(10240);
-        client_config.cert_compression_cache =
-            Arc::new(rustls::compress::CompressionCache::default());
-        client_config.max_fragment_size = Some(16384); // Larger fragment size for powerful servers
-        client_config.enable_early_data = true; // Enable 0-RTT data
-
         let https = HttpsConnectorBuilder::new()
-            .with_tls_config(client_config)
+            .with_tls_config(tls_config.client_config)
             .https_or_http()
             .enable_http1()
             .build();
