@@ -205,7 +205,7 @@ fn bench_server(c: &mut Criterion) {
     });
 
     // Concurrency stress test
-    let concurrent_requests = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1000]; // log sequence
+    let concurrent_requests = vec![1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987]; // log sequence
     for &num_requests in &concurrent_requests {
         group.throughput(Throughput::Elements(num_requests as u64));
         group.bench_with_input(
