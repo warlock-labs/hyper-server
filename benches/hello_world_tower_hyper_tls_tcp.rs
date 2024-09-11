@@ -120,7 +120,98 @@ fn bench_server(c: &mut Criterion) {
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(20));
 
-    // ... [keep the rest of the benchmark code as it is] ...
+    // Single request latency
+    group.bench_function("single_request_latency", |b| {
+        let client = client.clone();
+        let url = url.clone();
+        b.to_async(&rt).iter(|| async {
+            send_request(&client, url.clone()).await.unwrap()
+        });
+    });
+
+    // Throughput test
+    group.bench_function("throughput", |b| {
+        let client = client.clone();
+        let url = url.clone();
+        b.to_async(&rt).iter_custom(|iters| {
+            let client = client.clone();
+            let url = url.clone();
+            async move {
+                let start = std::time::Instant::now();
+                for _ in 0..iters {
+                    send_request(&client, url.clone()).await.unwrap();
+                }
+                start.elapsed()
+            }
+        });
+    });
+
+    // Concurrent connections test
+    let concurrent_requests = vec![10, 50, 100, 200];
+    for &num_requests in &concurrent_requests {
+        group.bench_with_input(
+            BenchmarkId::new("concurrent_requests", num_requests),
+            &num_requests,
+            |b, &num_requests| {
+                let client = client.clone();
+                let url = url.clone();
+                let semaphore = Arc::new(Semaphore::new(num_requests));
+                b.to_async(&rt).iter(|| async {
+                    let requests = (0..num_requests).map(|_| {
+                        let client = client.clone();
+                        let url = url.clone();
+                        let semaphore = semaphore.clone();
+                        async move {
+                            let _permit = semaphore.acquire().await.unwrap();
+                            send_request(&client, url).await
+                        }
+                    });
+                    join_all(requests).await.into_iter().collect::<Result<Vec<_>, _>>().unwrap()
+                });
+            },
+        );
+    }
+
+    let post_url = Uri::builder()
+        .scheme("https")
+        .authority(format!("localhost:{}", server_addr.port()))
+        .path_and_query("/echo")
+        .build()
+        .expect("Failed to build POST URI");
+
+    group.bench_function("post_request_with_payload", |b| {
+        let client = client.clone();
+        let post_url = post_url.clone();
+        b.to_async(&rt).iter(|| async {
+            let req = Request::builder()
+                .method("POST")
+                .uri(post_url.clone())
+                .body(Empty::<Bytes>::new())
+                .unwrap();
+            let res = client.request(req).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(&body[..], b"");  // The echo endpoint will return an empty body for an empty request
+        });
+    });
+
+    // Long-running connection test
+    group.bench_function("long_running_connection", |b| {
+        let client = client.clone();
+        let url = url.clone();
+        b.to_async(&rt).iter_custom(|iters| {
+            let client = client.clone();
+            let url = url.clone();
+            async move {
+                let start = std::time::Instant::now();
+                for _ in 0..iters {
+                    send_request(&client, url.clone()).await.unwrap();
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                start.elapsed()
+            }
+        });
+    });
 
     group.finish();
 
