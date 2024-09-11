@@ -1,10 +1,8 @@
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::{fs::File, os::raw::c_int, path::Path};
 
 use bytes::Bytes;
-use criterion::profiler::Profiler;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use http::{Request, Response, StatusCode, Uri};
 use http_body_util::{BodyExt, Empty, Full};
@@ -14,7 +12,6 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
 use hyper_util::service::TowerToHyperService;
-use pprof::ProfilerGuard;
 use rustls::server::ServerSessionMemoryCache;
 use rustls::{ClientConfig, RootCertStore, ServerConfig};
 use tokio::net::TcpSocket;
@@ -26,38 +23,91 @@ use tracing::info;
 
 use hyper_server::{load_certs, load_private_key, serve_http_with_shutdown};
 
-/// Custom profiler that creates a flamegraph for each benchmark
-pub struct FlamegraphProfiler<'a> {
-    frequency: c_int,
-    active_profiler: Option<ProfilerGuard<'a>>,
-}
+/// Profiling module for generating flamegraphs during benchmarks
+///
+/// This module is only compiled when the "dev-profiling" feature is enabled.
+/// It provides a custom profiler that integrates with Criterion to generate
+/// flamegraphs for each benchmark run.
+#[cfg(feature = "dev-profiling")]
+mod profiling {
+    use std::fs::File;
+    use std::path::Path;
 
-impl<'a> FlamegraphProfiler<'a> {
-    pub fn new(frequency: c_int) -> Self {
-        FlamegraphProfiler {
-            frequency,
-            active_profiler: None,
+    use criterion::profiler::Profiler;
+    use pprof::ProfilerGuard;
+
+    /// Custom profiler for generating flamegraphs
+    ///
+    /// This struct implements the `Profiler` trait from Criterion,
+    /// allowing it to be used as a custom profiler in benchmark runs.
+    pub struct FlamegraphProfiler<'a> {
+        /// Sampling frequency for the profiler (in Hz)
+        frequency: i32,
+        /// The active profiler instance, if profiling is currently in progress
+        active_profiler: Option<ProfilerGuard<'a>>,
+    }
+
+    impl<'a> FlamegraphProfiler<'a> {
+        /// Creates a new `FlamegraphProfiler` instance
+        ///
+        /// # Arguments
+        ///
+        /// * `frequency` - The sampling frequency for the profiler, in Hz
+        ///
+        /// # Returns
+        ///
+        /// A new `FlamegraphProfiler` instance
+        pub fn new(frequency: i32) -> Self {
+            FlamegraphProfiler {
+                frequency,
+                active_profiler: None,
+            }
         }
     }
-}
 
-impl<'a> Profiler for FlamegraphProfiler<'a> {
-    fn start_profiling(&mut self, _benchmark_id: &str, _benchmark_dir: &Path) {
-        self.active_profiler = Some(ProfilerGuard::new(self.frequency).unwrap());
-    }
+    impl<'a> Profiler for FlamegraphProfiler<'a> {
+        /// Starts profiling for a benchmark
+        ///
+        /// This method is called by Criterion at the start of each benchmark iteration.
+        /// It creates a new `ProfilerGuard` instance and stores it in `active_profiler`.
+        ///
+        /// # Arguments
+        ///
+        /// * `_benchmark_id` - The ID of the benchmark (unused in this implementation)
+        /// * `_benchmark_dir` - The directory for benchmark results (unused in this implementation)
+        fn start_profiling(&mut self, _benchmark_id: &str, _benchmark_dir: &Path) {
+            self.active_profiler = Some(ProfilerGuard::new(self.frequency).unwrap());
+        }
 
-    fn stop_profiling(&mut self, _benchmark_id: &str, benchmark_dir: &Path) {
-        std::fs::create_dir_all(benchmark_dir).unwrap();
-        let flamegraph_path = benchmark_dir.join("flamegraph.svg");
-        let flamegraph_file = File::create(&flamegraph_path)
-            .expect("File system error while creating flamegraph.svg");
-        if let Some(profiler) = self.active_profiler.take() {
-            profiler
-                .report()
-                .build()
-                .unwrap()
-                .flamegraph(flamegraph_file)
-                .expect("Error writing flamegraph");
+        /// Stops profiling and generates a flamegraph
+        ///
+        /// This method is called by Criterion at the end of each benchmark iteration.
+        /// It generates a flamegraph from the collected profile data and saves it as an SVG file.
+        ///
+        /// # Arguments
+        ///
+        /// * `_benchmark_id` - The ID of the benchmark (unused in this implementation)
+        /// * `benchmark_dir` - The directory where the flamegraph should be saved
+        fn stop_profiling(&mut self, _benchmark_id: &str, benchmark_dir: &Path) {
+            // Ensure the benchmark directory exists
+            std::fs::create_dir_all(benchmark_dir).unwrap();
+
+            // Define the path for the flamegraph SVG file
+            let flamegraph_path = benchmark_dir.join("flamegraph.svg");
+
+            // Create the flamegraph file
+            let flamegraph_file = File::create(&flamegraph_path)
+                .expect("File system error while creating flamegraph.svg");
+
+            // Generate and write the flamegraph if a profiler is active
+            if let Some(profiler) = self.active_profiler.take() {
+                profiler
+                    .report()
+                    .build()
+                    .unwrap()
+                    .flamegraph(flamegraph_file)
+                    .expect("Error writing flamegraph");
+            }
         }
     }
 }
@@ -289,13 +339,24 @@ fn bench_server(c: &mut Criterion) {
     });
 }
 
+#[cfg(not(feature = "dev-profiling"))]
 criterion_group! {
     name = benches;
     config = Criterion::default()
         .sample_size(10)
-        .measurement_time(Duration::from_secs(20))
+        .measurement_time(Duration::from_secs(30))
+        .warm_up_time(Duration::from_secs(5));
+    targets = bench_server
+}
+
+#[cfg(feature = "dev-profiling")]
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .sample_size(10)
+        .measurement_time(Duration::from_secs(30))
         .warm_up_time(Duration::from_secs(5))
-        .with_profiler(FlamegraphProfiler::new(100));
+        .with_profiler(profiling::FlamegraphProfiler::new(100));
     targets = bench_server
 }
 

@@ -22,7 +22,7 @@ http = "1.1.0"
 http-body = "1.0.1"
 http-body-util = "0.1.2"
 hyper = "1.4.1"
-hyper-rustls = "0.27.3"
+hyper-rustls = { version = "0.27.3", features = ["http2"] }
 hyper-util = { version = "0.1.8", features = ["server", "tokio", "server-auto", "server-graceful", "service"] }
 pin-project = "1.1.5"
 rand = "0.9.0-alpha.2"
@@ -35,6 +35,8 @@ tokio-util = "0.7.12"
 tower = { version = "0.5.1", features = ["util"] }
 tracing = "0.1.40"
 signature = "2.3.0-pre.4"
+ring = "0.17.8"
+pprof = { version = "0.13.0", features = ["flamegraph"], optional = true}
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }
@@ -43,7 +45,6 @@ tokio = { version = "1.40", features = ["rt", "net", "test-util"] }
 tokio-util = { version = "0.7.12", features = ["compat"] }
 tracing-subscriber = "0.3.18"
 num_cpus = "1.16.0"
-pprof = { version = "0.13.0", features = ["flamegraph"] }
 ring = "0.17.8"
 rcgen = "0.13.1"
 
@@ -52,4 +53,9 @@ name = "hello_world_tower_hyper_tls_tcp"
 harness = false
 
 [features]
+default = []
 jemalloc = ["tikv-jemallocator"]
+dev-profiling = ["pprof"]
+
+[profile.release]
+debug = true
