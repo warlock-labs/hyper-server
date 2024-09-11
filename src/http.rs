@@ -80,7 +80,7 @@ pub async fn serve_http_connection<B, IO, S, E>(
             });
 
             // Create and pin the HTTP connection
-            let mut conn = pin!(builder.serve_connection(hyper_io, hyper_service));
+            let mut conn = pin!(builder.serve_connection_with_upgrades(hyper_io, hyper_service));
 
             // Set up the sleep future for max connection age
             let sleep = sleep_or_pending(max_connection_age);
