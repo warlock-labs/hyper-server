@@ -23,13 +23,21 @@ hyper-util = { version = "0.1.8", features = ["server", "tokio", "server-auto", 
 pin-project = "1.1.5"
 rustls = "0.23.13"
 rustls-pemfile = "2.1.3"
-tokio = { version = "1.40.0", features = ["net", "macros"] }
+tokio = { version = "1.40.0", features = ["net", "macros", "rt-multi-thread"] }
 tokio-rustls = "0.26.0"
 tokio-stream = { version = "0.1.16", features = ["net"] }
 tower = { version = "0.5.1", features = ["util"] }
 tracing = "0.1.40"
+tokio-util = "0.7.12"
+hyper-rustls = "0.27.3"
 
 [dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }
 hyper = { version = "1.4.1", features = ["client"] }
 tokio = { version = "1.0", features = ["rt", "net", "test-util"] }
+tokio-util = { version = "0.7", features = ["compat"] }
 tracing-subscriber = "0.3.18"
+
+[[bench]]
+name = "hello_world_tower_hyper_tls_tcp"
+harness = false
