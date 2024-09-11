@@ -36,61 +36,7 @@ hyper-server = "0.7.0"
 Here's an example of how to use hyper-server with a simple tower service:
 
 ```rust
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use bytes::Bytes;
-use http::{Request, Response, StatusCode};
-use http_body_util::Full;
-use hyper_util::rt::TokioExecutor;
-use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
-use tower::Service;
-use tokio::net::TcpListener;
 
-// A simple tower service
-#[derive(Clone)]
-struct HelloService;
-
-impl Service<Request<hyper::body::Incoming>> for HelloService {
-    type Response = Response<Full<Bytes>>;
-    type Error = Infallible;
-    type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn call(&mut self, req: Request<hyper::body::Incoming>) -> Self::Future {
-        Box::pin(async move {
-            let response = match (req.method(), req.uri().path()) {
-                (&hyper::Method::GET, "/") => {
-                    Response::new(Full::new(Bytes::from("Hello, World!")))
-                }
-                _ => {
-                    let mut res = Response::new(Full::new(Bytes::from("Not Found")));
-                    *res.status_mut() = StatusCode::NOT_FOUND;
-                    res
-                }
-            };
-            Ok(response)
-        })
-    }
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    let listener = TcpListener::bind(addr).await?;
-    println!("Listening on http://{}", addr);
-
-    let http_builder = HttpConnectionBuilder::new(TokioExecutor::new());
-    let service = HelloService;
-
-    hyper_server::serve_http_with_shutdown(
-        service,
-        tokio_stream::wrappers::TcpListenerStream::new(listener),
-        http_builder,
-        None,
-    )
-    .await?;
-
-    Ok(())
-}
 ```
 
 For more advanced usage and examples, including TLS configuration and custom service implementations, please refer to the [examples directory](/examples).
