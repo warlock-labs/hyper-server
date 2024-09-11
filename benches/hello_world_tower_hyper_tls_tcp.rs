@@ -164,7 +164,8 @@ fn bench_server(c: &mut Criterion) {
             .enable_http1()
             .build();
 
-        let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new()).build(https);
+        let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new())
+            .build(https);
 
         (server_addr, shutdown_tx, client)
     });
@@ -198,7 +199,7 @@ fn bench_server(c: &mut Criterion) {
     });
 
     // Concurrency stress test
-    let concurrent_requests = vec![1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987]; // Fibonacci sequence
+    let concurrent_requests = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1000]; // log sequence
     for &num_requests in &concurrent_requests {
         group.throughput(Throughput::Elements(num_requests as u64));
         group.bench_with_input(

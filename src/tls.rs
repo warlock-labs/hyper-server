@@ -31,6 +31,7 @@ use tokio_stream::{Stream, StreamExt};
 ///
 /// - If the input `tcp_stream` yields an error, that error is propagated.
 /// - If the TLS handshake fails, the error is wrapped in the crate's `Error` type.
+#[inline]
 pub fn serve_tls_incoming<IO>(
     tcp_stream: impl Stream<Item = Result<IO, Error>>,
     tls: TlsAcceptor,
@@ -71,6 +72,7 @@ where
 /// # Returns
 ///
 /// A `Result` containing a vector of `CertificateDer` on success, or an `io::Error` on failure.
+#[inline]
 pub fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
     // Open certificate file
     let certfile = fs::File::open(filename)?;
@@ -92,6 +94,7 @@ pub fn load_certs(filename: &str) -> io::Result<Vec<CertificateDer<'static>>> {
 /// # Returns
 ///
 /// A `Result` containing a `PrivateKeyDer` on success, or an `io::Error` on failure.
+#[inline]
 pub fn load_private_key(filename: &str) -> io::Result<PrivateKeyDer<'static>> {
     // Open keyfile
     let keyfile = fs::File::open(filename)?;

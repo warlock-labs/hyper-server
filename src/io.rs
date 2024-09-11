@@ -23,6 +23,7 @@ impl<IO> AsyncRead for Transport<IO>
 where
     IO: AsyncRead + AsyncWrite + Unpin,
 {
+    #[inline]
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -39,6 +40,7 @@ impl<IO> AsyncWrite for Transport<IO>
 where
     IO: AsyncRead + AsyncWrite + Unpin,
 {
+    #[inline]
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -50,6 +52,7 @@ where
         }
     }
 
+    #[inline]
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         match self.get_mut() {
             Transport::Plain(io) => Pin::new(io).poll_flush(cx),
@@ -57,6 +60,7 @@ where
         }
     }
 
+    #[inline]
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         match self.get_mut() {
             Transport::Plain(io) => Pin::new(io).poll_shutdown(cx),
@@ -64,6 +68,7 @@ where
         }
     }
 
+    #[inline]
     fn poll_write_vectored(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -75,6 +80,7 @@ where
         }
     }
 
+    #[inline]
     fn is_write_vectored(&self) -> bool {
         match self {
             Transport::Plain(io) => io.is_write_vectored(),

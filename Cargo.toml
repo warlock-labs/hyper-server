@@ -31,6 +31,7 @@ tokio-stream = { version = "0.1.16", features = ["net"] }
 tokio-util = "0.7.12"
 tower = { version = "0.5.1", features = ["util"] }
 tracing = "0.1.40"
+jemallocator = { version = "0.5", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }
@@ -42,3 +43,6 @@ tracing-subscriber = "0.3.18"
 [[bench]]
 name = "hello_world_tower_hyper_tls_tcp"
 harness = false
+
+[features]
+jemalloc = ["jemallocator"]

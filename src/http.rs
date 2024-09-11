@@ -28,6 +28,7 @@ use crate::fuse::Fuse;
 ///
 /// * `wait_for` - An `Option<Duration>` specifying how long to sleep.
 ///   If `None`, the function will wait indefinitely.
+#[inline]
 async fn sleep_or_pending(wait_for: Option<Duration>) {
     match wait_for {
         Some(wait) => sleep(wait).await,
@@ -55,6 +56,7 @@ async fn sleep_or_pending(wait_for: Option<Duration>) {
 /// * `watcher`: An optional `tokio::sync::watch::Receiver` for graceful shutdown signaling.
 /// * `max_connection_age`: An optional `Duration` specifying the maximum age of the connection
 ///   before initiating a graceful shutdown.
+#[inline]
 pub async fn serve_http_connection<B, IO, S, E>(
     hyper_io: IO,
     hyper_service: S,
@@ -78,6 +80,37 @@ pub async fn serve_http_connection<B, IO, S, E>(
             let mut sig = pin!(crate::fuse::Fuse {
                 inner: watcher.as_mut().map(|w| w.changed()),
             });
+
+            let builder = builder.clone();
+            // TODO(How to accept a preconfigured builder)
+            // The API here for hyper_util is poor.
+            // Really what you want to do is configure a builder like this
+            // and pass it in for use as a builder, however, you cannot
+            // the simple way may be to require configuration and
+            // then accept an immutable reference to an http2 connection builder
+            let mut builder = builder.clone();
+            builder
+                // HTTP/1 settings
+                .http1()
+                .half_close(true)
+                .keep_alive(true)
+                .max_buf_size(64 * 1024)
+                .pipeline_flush(true)
+                .preserve_header_case(true)
+                .title_case_headers(false)
+
+                // HTTP/2 settings
+                .http2()
+                .initial_stream_window_size(Some(1024 * 1024))
+                .initial_connection_window_size(Some(2 * 1024 * 1024))
+                .adaptive_window(true)
+                .max_frame_size(Some(16 * 1024))
+                .max_concurrent_streams(Some(1000))
+                .max_send_buf_size(1024 * 1024)
+                .enable_connect_protocol()
+                .max_header_list_size(16 * 1024)
+                .keep_alive_interval(Some(Duration::from_secs(20)))
+                .keep_alive_timeout(Duration::from_secs(20));
 
             // Create and pin the HTTP connection
             let mut conn = pin!(builder.serve_connection_with_upgrades(hyper_io, hyper_service));
@@ -332,6 +365,7 @@ pub async fn serve_http_connection<B, IO, S, E>(
 /// - The server will continue to accept new connections until the `signal` future resolves.
 /// - When using TLS, make sure to provide a properly configured `ServerConfig`.
 /// - The function will return when all connections have been closed after the shutdown signal.
+#[inline]
 pub async fn serve_http_with_shutdown<E, F, I, IO, IE, ResBody, S>(
     service: S,
     incoming: I,
