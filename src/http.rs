@@ -517,7 +517,7 @@ where
                         hyper_io,
                         service,
                         builder,
-                        graceful.then(|| signal_rx),
+                        graceful.then_some(signal_rx),
                         None
                     ).await;
                 });
