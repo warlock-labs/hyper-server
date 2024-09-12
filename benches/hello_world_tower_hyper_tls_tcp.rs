@@ -344,7 +344,7 @@ fn bench_server(c: &mut Criterion) {
         let client = reqwest::Client::builder()
             .use_rustls_tls()
             // This breaks for the same reason that the hyper-tls/hyper client does
-            //.http2_prior_knowledge()
+            .http2_prior_knowledge()
             // Increase connection pool size for better concurrency
             .pool_max_idle_per_host(1250)
             // Enable TCP keepalive
