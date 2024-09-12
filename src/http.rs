@@ -68,7 +68,7 @@ pub async fn serve_http_connection<B, IO, S, E>(
     B::Data: Send,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
     IO: hyper::rt::Read + hyper::rt::Write + Unpin + Send + 'static,
-    S: Service<Request<Incoming>, Response=Response<B>> + Clone + Send + 'static,
+    S: Service<Request<Incoming>, Response = Response<B>> + Clone + Send + 'static,
     S::Future: Send + 'static,
     S::Error: Into<Box<dyn std::error::Error + Send + Sync>> + Send,
     E: HttpServerConnExec<S::Future, B> + Send + Sync + 'static,
@@ -83,38 +83,57 @@ pub async fn serve_http_connection<B, IO, S, E>(
     let sleep = sleep_or_pending(max_connection_age);
     tokio::pin!(sleep);
 
-    // TODO(This builder should be pre-configured outside of the server)
-    // unfortunately this object is very poorly designed and there is
-    // no way exposed to pre-configure it.
-    //
-    // There must be some way to approach here.
-    let builder = builder.clone();
+    // TODO(It's absolutely terrible that we have to clone the builder here)
+    // and configure it rather than passing it in.
+    // this is due to an API flaw in the hyper_util crate.
+    // this builder doesn't have a way to convert back to a builder
+    // once you start building.
+
     // Configure the builder
     let mut builder = builder.clone();
     builder
         // HTTP/1 settings
         .http1()
+        // Enable half-close for better connection handling
         .half_close(true)
+        // Enable keep-alive to reduce overhead for multiple requests
         .keep_alive(true)
-        .max_buf_size(64 * 1024)
+        // Increase max buffer size to 256KB for better performance with larger payloads
+        .max_buf_size(256 * 1024)
+        // Enable immediate flushing of pipelined responses
         .pipeline_flush(true)
+        // Preserve original header case for compatibility
         .preserve_header_case(true)
+        // Disable automatic title casing of headers to reduce processing overhead
         .title_case_headers(false)
         // HTTP/2 settings
         .http2()
-        .initial_stream_window_size(Some(1024 * 1024))
-        .initial_connection_window_size(Some(2 * 1024 * 1024))
+        // Increase initial stream window size to 2MB for better throughput
+        .initial_stream_window_size(Some(2 * 1024 * 1024))
+        // Increase initial connection window size to 4MB for improved performance
+        .initial_connection_window_size(Some(4 * 1024 * 1024))
+        // Enable adaptive window for dynamic flow control
         .adaptive_window(true)
-        .max_frame_size(Some(16 * 1024))
-        .max_concurrent_streams(Some(1000))
-        .max_send_buf_size(1024 * 1024)
+        // Increase max frame size to 32KB for larger data chunks
+        .max_frame_size(Some(32 * 1024))
+        // Allow up to 2000 concurrent streams for better parallelism
+        .max_concurrent_streams(Some(2000))
+        // Increase max send buffer size to 2MB for improved write performance
+        .max_send_buf_size(2 * 1024 * 1024)
+        // Enable CONNECT protocol support for proxying and tunneling
         .enable_connect_protocol()
-        .max_header_list_size(16 * 1024)
-        .keep_alive_interval(Some(Duration::from_secs(20)))
-        .keep_alive_timeout(Duration::from_secs(20));
+        // Increase max header list size to 32KB to handle larger headers
+        .max_header_list_size(32 * 1024)
+        // Set keep-alive interval to 10 seconds for more responsive connection management
+        .keep_alive_interval(Some(Duration::from_secs(10)))
+        // Set keep-alive timeout to 30 seconds to balance connection reuse and resource conservation
+        .keep_alive_timeout(Duration::from_secs(30));
 
     // Create and pin the HTTP connection
-    // This handles all the HTTP connection logic via hyper
+    //
+    // This handles all the HTTP connection logic via hyper.
+    // This is a pointer to a blocking task, effectively
+    // Which tells us how it's doing via the hyper_io transport.
     let mut conn = pin!(builder.serve_connection_with_upgrades(hyper_io, hyper_service));
 
     // Here we wait for the http connection to terminate
@@ -368,14 +387,14 @@ pub async fn serve_http_with_shutdown<E, F, I, IO, IE, ResBody, S>(
     signal: Option<F>,
 ) -> Result<(), super::Error>
 where
-    F: Future<Output=()> + Send + 'static,
-    I: Stream<Item=Result<IO, IE>> + Send + 'static,
+    F: Future<Output = ()> + Send + 'static,
+    I: Stream<Item = Result<IO, IE>> + Send + 'static,
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     IE: Into<crate::Error> + Send + 'static,
-    S: Service<Request<Incoming>, Response=Response<ResBody>> + Clone + Send + 'static,
+    S: Service<Request<Incoming>, Response = Response<ResBody>> + Clone + Send + 'static,
     S::Future: Send + 'static,
     S::Error: Into<Box<dyn std::error::Error + Send + Sync>> + Send,
-    ResBody: Body<Data=Bytes> + Send + Sync + 'static,
+    ResBody: Body<Data = Bytes> + Send + Sync + 'static,
     ResBody::Error: Into<crate::Error> + Send + Sync,
     E: HttpServerConnExec<S::Future, ResBody> + Send + Sync + 'static,
 {
@@ -748,7 +767,7 @@ mod tests {
                     }
                 }
             })
-                .await;
+            .await;
 
             match shutdown_result {
                 Ok(Ok(())) => println!("Server shut down successfully"),

@@ -24,15 +24,14 @@ use std::sync::Arc;
 use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use http::{Request, Response, StatusCode, Uri};
-use http_body_util::{BodyExt, Empty, Full};
+use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
-use hyper_rustls::HttpsConnectorBuilder;
-use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::server::conn::auto::Builder as HttpConnectionBuilder;
 use hyper_util::service::TowerToHyperService;
 use rcgen::{CertificateParams, DistinguishedName, KeyPair};
-use rustls::crypto::aws_lc_rs::Ticketer;
+use reqwest::Client;
+use rustls::crypto::aws_lc_rs::{default_provider, Ticketer};
 use rustls::pki_types::{CertificateDer, PrivatePkcs8KeyDer};
 use rustls::server::ServerSessionMemoryCache;
 use rustls::{ClientConfig, RootCertStore, ServerConfig};
@@ -275,25 +274,19 @@ async fn start_server(
 }
 
 async fn send_request(
-    client: &Client<
-        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
-        Empty<Bytes>,
-    >,
+    client: &Client,
     url: Uri,
 ) -> Result<(Duration, usize), Box<dyn std::error::Error + Send + Sync>> {
     let start = Instant::now();
-    let res = client.get(url).await?;
+    let res = client.get(url.to_string()).send().await?;
     assert_eq!(res.status(), StatusCode::OK);
-    let body = res.into_body().collect().await?.to_bytes();
+    let body = res.bytes().await?;
     assert_eq!(&body[..], b"Hello, World!");
     Ok((start.elapsed(), body.len()))
 }
 
 async fn concurrent_benchmark(
-    client: &Client<
-        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
-        Empty<Bytes>,
-    >,
+    client: &Client,
     url: Uri,
     num_requests: usize,
 ) -> (Duration, Vec<Duration>, usize) {
@@ -322,22 +315,46 @@ async fn concurrent_benchmark(
 }
 
 fn bench_server(c: &mut Criterion) {
-    let server_runtime = Arc::new(create_optimized_runtime(num_cpus::get() / 2).unwrap());
+    let bench_runtime = create_optimized_runtime(num_cpus::get() / 2).unwrap();
 
-    let (server_addr, shutdown_tx, client) = server_runtime.block_on(async {
+    let (server_addr, shutdown_tx, client) = bench_runtime.block_on(async {
+        // Install the default provider for AWS LC RS crypto
+        default_provider().install_default().unwrap();
+
         let tls_config = generate_shared_ecdsa_config();
         let (server_addr, shutdown_tx) = start_server(tls_config.server_config.clone())
             .await
             .expect("Failed to start server");
         info!("Server started on {}", server_addr);
 
-        let https = HttpsConnectorBuilder::new()
-            .with_tls_config(tls_config.client_config)
-            .https_or_http()
-            .enable_http1()
-            .build();
+        // Unfortunately hyper based http2 seems pretty busted here
+        // around not finding the tokio runtime timer
+        // https://github.com/rustls/hyper-rustls/issues/287
+        // let https = HttpsConnectorBuilder::new()
+        //             .with_tls_config(tls_config.client_config)
+        //             .https_or_http()
+        //             .enable_all_versions()
+        //             .build();
+        //
+        //         let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new())
+        //             .timer(TokioTimer::new())
+        //             .pool_timer(TokioTimer::new())
+        //             .build(https);
 
-        let client: Client<_, Empty<Bytes>> = Client::builder(TokioExecutor::new()).build(https);
+        let client = reqwest::Client::builder()
+            .use_rustls_tls()
+            // This breaks for the same reason that the hyper-tls/hyper client does
+            //.http2_prior_knowledge()
+            // Increase connection pool size for better concurrency
+            .pool_max_idle_per_host(1250)
+            // Enable TCP keepalive
+            .tcp_keepalive(Some(Duration::from_secs(10)))
+            // Disable automatic redirect following to reduce overhead
+            .redirect(reqwest::redirect::Policy::none())
+            // Use preconfigured TLS settings from the shared config
+            .use_preconfigured_tls(tls_config.client_config)
+            .build()
+            .expect("Failed to build reqwest client");
 
         (server_addr, shutdown_tx, client)
     });
@@ -358,8 +375,7 @@ fn bench_server(c: &mut Criterion) {
     group.bench_function("serial_latency", |b| {
         let client = client.clone();
         let url = url.clone();
-        let client_runtime = create_optimized_runtime(num_cpus::get() / 2).unwrap();
-        b.to_async(client_runtime)
+        b.to_async(&bench_runtime)
             .iter(|| async { send_request(&client, url.clone()).await.unwrap() });
     });
 
@@ -373,8 +389,7 @@ fn bench_server(c: &mut Criterion) {
             |b, &num_requests| {
                 let client = client.clone();
                 let url = url.clone();
-                let client_runtime = create_optimized_runtime(num_cpus::get() / 2).unwrap();
-                b.to_async(client_runtime).iter(|| async {
+                b.to_async(&bench_runtime).iter(|| async {
                     concurrent_benchmark(&client, url.clone(), num_requests).await
                 });
             },
@@ -383,7 +398,7 @@ fn bench_server(c: &mut Criterion) {
 
     group.finish();
 
-    server_runtime.block_on(async {
+    bench_runtime.block_on(async {
         shutdown_tx.send(()).unwrap();
         tokio::time::sleep(Duration::from_secs(1)).await;
     });
