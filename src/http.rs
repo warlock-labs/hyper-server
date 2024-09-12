@@ -1,6 +1,6 @@
 use crate::io::Transport;
 use std::future::pending;
-use std::{future::Future, pin::pin, sync::Arc, time::Duration};
+use std::{future::Future, pin::pin, sync::Arc};
 use tokio_rustls::TlsAcceptor;
 
 use bytes::Bytes;
@@ -8,12 +8,14 @@ use http::{Request, Response};
 use http_body::Body;
 use hyper::body::Incoming;
 use hyper::service::Service;
+use hyper_util::rt::TokioTimer;
 use hyper_util::{
     rt::TokioIo,
     server::conn::auto::{Builder as HttpConnectionBuilder, HttpServerConnExec},
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::sleep;
+use tokio::time::Duration;
 use tokio_stream::Stream;
 use tokio_stream::StreamExt as _;
 use tracing::{debug, trace};
@@ -108,6 +110,11 @@ pub async fn serve_http_connection<B, IO, S, E>(
         .title_case_headers(false)
         // HTTP/2 settings
         .http2()
+        // Add the timer to the builder
+        // This will cause you all sorts of pain otherwise
+        // https://github.com/seanmonstar/reqwest/issues/2421
+        // https://github.com/rustls/hyper-rustls/issues/287
+        .timer(TokioTimer::new())
         // Increase initial stream window size to 2MB for better throughput
         .initial_stream_window_size(Some(2 * 1024 * 1024))
         // Increase initial connection window size to 4MB for improved performance

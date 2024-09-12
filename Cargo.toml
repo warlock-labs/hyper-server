@@ -22,7 +22,7 @@ http = "1.1.0"
 http-body = "1.0.1"
 http-body-util = "0.1.2"
 hyper = "1.4.1"
-hyper-util = { version = "0.1.8", features = ["server", "tokio", "server-auto", "server-graceful", "service"] }
+hyper-util = { version = "0.1.8", features = ["server", "tokio", "server-auto", "server-graceful", "service", "http2"] }
 pin-project = "1.1.5"
 pprof = { version = "0.13.0", features = ["flamegraph"], optional = true }
 ring = "0.17.8"
