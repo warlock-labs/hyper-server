@@ -268,8 +268,8 @@ async fn start_server(
                 shutdown_rx.await.ok();
             }),
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
     });
     Ok((server_addr, shutdown_tx))
 }
