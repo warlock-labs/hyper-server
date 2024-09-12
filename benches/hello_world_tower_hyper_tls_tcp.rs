@@ -268,8 +268,8 @@ async fn start_server(
                 shutdown_rx.await.ok();
             }),
         )
-        .await
-        .unwrap();
+            .await
+            .unwrap();
     });
     Ok((server_addr, shutdown_tx))
 }
@@ -353,18 +353,9 @@ fn bench_server(c: &mut Criterion) {
     group.sample_size(20);
     group.measurement_time(Duration::from_secs(30));
 
-    // Latency test
-    group.bench_function("latency", |b| {
-        let client = client.clone();
-        let url = url.clone();
-        let client_runtime = create_optimized_runtime(num_cpus::get() / 2).unwrap();
-        b.to_async(client_runtime)
-            .iter(|| async { send_request(&client, url.clone()).await.unwrap().0 });
-    });
-
-    // Throughput test
+    // Latency
     group.throughput(Throughput::Elements(1));
-    group.bench_function("throughput", |b| {
+    group.bench_function("serial_latency", |b| {
         let client = client.clone();
         let url = url.clone();
         let client_runtime = create_optimized_runtime(num_cpus::get() / 2).unwrap();
@@ -373,11 +364,11 @@ fn bench_server(c: &mut Criterion) {
     });
 
     // Concurrency stress test
-    let concurrent_requests = vec![1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987];
+    let concurrent_requests = vec![10, 50, 250, 1250];
     for &num_requests in &concurrent_requests {
         group.throughput(Throughput::Elements(num_requests as u64));
         group.bench_with_input(
-            BenchmarkId::new("concurrent_requests", num_requests),
+            BenchmarkId::new("concurrent_latency", num_requests),
             &num_requests,
             |b, &num_requests| {
                 let client = client.clone();
