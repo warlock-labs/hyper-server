@@ -1,5 +1,5 @@
 use crate::error::handle_accept_error;
-use crate::Error;
+use crate::Error as TransportError;
 use std::ops::ControlFlow;
 use std::pin::pin;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -55,10 +55,10 @@ use tokio_stream::{Stream, StreamExt};
 #[inline]
 pub fn serve_tcp_incoming<IO, IE>(
     incoming: impl Stream<Item = Result<IO, IE>> + Send + 'static,
-) -> impl Stream<Item = Result<IO, crate::Error>>
+) -> impl Stream<Item = Result<IO, TransportError>>
 where
     IO: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    IE: Into<Error> + Send + 'static,
+    IE: Into<TransportError> + Send + 'static,
 {
     async_stream::stream! {
         // We pin the stream on the stack to ensure that it's safe to
