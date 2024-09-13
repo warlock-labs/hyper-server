@@ -1,67 +1,17 @@
+use crate::error::handle_accept_error;
 use crate::Error;
-use std::{io, ops::ControlFlow};
+use std::ops::ControlFlow;
+use std::pin::pin;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::{Stream, StreamExt};
-use tracing::debug;
 
-/// Handles errors that occur during TCP connection acceptance.
-///
-/// This function determines whether an error should be treated as fatal (breaking the accept loop)
-/// or non-fatal (allowing the loop to continue). This handler is crucial for maintaining the
-/// stability and reliability of the TCP server by appropriately handling different types of
-/// errors at the accept stage.
-///
-/// # Arguments
-///
-/// * `e` - The error to handle, which can be converted into the crate's [`Error`] type.
-///
-/// # Returns
-///
-/// * [`ControlFlow::Continue(())`] if the error is non-fatal and the accept loop should continue.
-/// * [`ControlFlow::Break(Error)`] if the error is fatal and the accept loop should terminate.
-///
-/// # Error Handling
-///
-/// The function categorizes errors as follows:
-/// - Non-fatal errors:
-///       [`io::ErrorKind::ConnectionAborted`],
-///       [`io::ErrorKind::Interrupted`],
-///       [`io::ErrorKind::InvalidData`],
-///       [`io::ErrorKind::WouldBlock`]
-/// - Fatal errors: All other error types
-///
-fn handle_accept_error(e: impl Into<Error>) -> ControlFlow<Error> {
-    // Convert the input error into our crate's Error type
-    let e = e.into();
-
-    // Log the error for debugging purposes
-    debug!(error = %e, "TCP accept loop error");
-
-    // Check if the error is an I/O error
-    if let Some(e) = e.downcast_ref::<io::Error>() {
-        // Determine if the error is non-fatal
-        if matches!(
-            e.kind(),
-            io::ErrorKind::ConnectionAborted  // Connection was aborted by the client or network
-                | io::ErrorKind::Interrupted  // The operation was interrupted (e.g., by a signal)
-                | io::ErrorKind::InvalidData  // Received invalid data (might be temporary)
-                | io::ErrorKind::WouldBlock // Operation would block (common in non-blocking I/O)
-        ) {
-            // For non-fatal errors, we continue the accept loop
-            return ControlFlow::Continue(());
-        }
-    }
-
-    // If it's not a non-fatal I/O error, then treat it as fatal error
-    // This includes all other error types and I/O errors not explicitly handled above
-    ControlFlow::Break(e)
-}
-
-/// Creates a stream that yields a TCP stream for each incoming connection.
+/// Creates an IO stream that yields a TCP stream for each incoming connection.
 ///
 /// This function takes a stream of incoming connections and handles errors that may occur
 /// during the acceptance process. It will continue to yield connections even if non-fatal
 /// errors occur, but will terminate if a fatal error is encountered.
+///
+/// Effectively, it acts as a demultiplexer for incoming TCP connections.
 ///
 /// # Type Parameters
 ///
@@ -111,8 +61,9 @@ where
     IE: Into<Error> + Send + 'static,
 {
     async_stream::stream! {
-        // Pin the incoming stream to the heap for better performance
-        let mut incoming = Box::pin(incoming);
+        // We pin the stream on the stack to ensure that it's safe to
+        // pass out of scope
+        let mut incoming = pin!(incoming);
 
         // Continuously process incoming connections
         while let Some(item) = incoming.next().await {
