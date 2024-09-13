@@ -328,7 +328,7 @@ mod tests {
         let server_task = tokio::spawn(async move {
             debug!("Server task started");
             let mut tls_stream = Box::pin(serve_tls_incoming(tcp_incoming, tls_acceptor));
-            tokio::time::timeout(std::time::Duration::from_millis(10), tls_stream.next()).await
+            tokio::time::timeout(std::time::Duration::from_millis(1), tls_stream.next()).await
         });
 
         let untrusted_client_config = ClientConfig::builder()
@@ -392,7 +392,7 @@ mod tests {
             debug!("Server task started");
             let mut tls_stream = Box::pin(serve_tls_incoming(tcp_incoming, tls_acceptor));
             let result =
-                tokio::time::timeout(std::time::Duration::from_millis(10), tls_stream.next()).await;
+                tokio::time::timeout(std::time::Duration::from_millis(1), tls_stream.next()).await;
             debug!("Server task completed with result: {:?}", result.is_err());
             result
         });
