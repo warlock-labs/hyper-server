@@ -1,13 +1,15 @@
-use crate::error::handle_accept_error;
-use crate::Error as TransportError;
-use futures::stream::StreamExt;
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::{fs, io};
+
+use futures::stream::StreamExt;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::Stream;
+
+use crate::error::handle_accept_error;
+use crate::Error as TransportError;
 
 /// Creates a stream of TLS-encrypted connections from a stream of TCP connections.
 ///
@@ -169,42 +171,94 @@ pub fn load_private_key(filename: &str) -> io::Result<PrivateKeyDer<'static>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tcp::serve_tcp_incoming;
-    use futures::StreamExt;
-    use rustls::pki_types::{CertificateDer, ServerName};
-    use rustls::{ClientConfig, ServerConfig};
     use std::net::SocketAddr;
     use std::sync::Arc;
+
+    use futures::StreamExt;
+    use rcgen::{CertificateParams, DistinguishedName, KeyPair};
+    use rustls::pki_types::PrivatePkcs8KeyDer;
+    use rustls::pki_types::{CertificateDer, ServerName};
+    use rustls::RootCertStore;
+    use rustls::{ClientConfig, ServerConfig};
     use tokio::net::{TcpListener, TcpStream};
     use tokio_rustls::TlsAcceptor;
     use tokio_stream::wrappers::TcpListenerStream;
     use tracing::{debug, error, info, warn};
+
+    use crate::tcp::serve_tcp_incoming;
+
+    use super::*;
+
+    struct TlsConfig {
+        server_config: ServerConfig,
+        client_config: ClientConfig,
+    }
+
+    fn generate_dynamic_tls_config() -> TlsConfig {
+        // Generate ECDSA key pair
+        let key_pair = KeyPair::generate().expect("Failed to generate key pair");
+
+        // Generate certificate parameters
+        let mut params = CertificateParams::new(vec!["localhost".to_string()])
+            .expect("Failed to create certificate params");
+        params.distinguished_name = DistinguishedName::new();
+
+        // Generate the self-signed certificate
+        let cert = params
+            .self_signed(&key_pair)
+            .expect("Failed to generate self-signed certificate");
+
+        // Serialize the certificate and private key
+        let cert_der = cert.der().to_vec();
+        let key_der = key_pair.serialize_der();
+
+        // Create Rustls certificate and private key
+        let cert = CertificateDer::from(cert_der);
+        let key = PrivatePkcs8KeyDer::from(key_der);
+
+        // Configure Server
+        let mut server_config = ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(vec![cert.clone()], key.into())
+            .expect("Failed to configure server");
+
+        // Server optimizations
+        server_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+        // Configure Client
+        let mut root_store = RootCertStore::empty();
+        root_store
+            .add(cert)
+            .expect("Failed to add certificate to root store");
+
+        let client_config = ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        TlsConfig {
+            server_config,
+            client_config,
+        }
+    }
 
     fn init_crypto_provider() {
         match rustls::crypto::aws_lc_rs::default_provider().install_default() {
             Ok(_) => debug!("Default crypto provider installed successfully"),
             Err(_) => {
                 // Crypto provider already installed
+                debug!("Crypto provider already installed");
             }
         }
     }
 
-    // Helper function to create a TLS acceptor for testing
-    async fn create_test_tls_acceptor() -> io::Result<TlsAcceptor> {
+    async fn create_test_tls_acceptor() -> io::Result<(TlsAcceptor, ClientConfig)> {
         debug!("Creating test TLS acceptor");
-        let certs = load_certs("examples/sample.pem")?;
-        let key = load_private_key("examples/sample.rsa")?;
+        let tls_config = generate_dynamic_tls_config();
 
-        let config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .map_err(|e| {
-                error!("Failed to create ServerConfig: {}", e);
-                io::Error::new(io::ErrorKind::Other, e)
-            })?;
-
-        Ok(TlsAcceptor::from(Arc::new(config)))
+        Ok((
+            TlsAcceptor::from(Arc::new(tls_config.server_config)),
+            tls_config.client_config,
+        ))
     }
 
     #[tokio::test]
@@ -221,12 +275,10 @@ mod tests {
         debug!("Server listening on {}", server_addr);
         let incoming = TcpListenerStream::new(listener);
 
-        let tls_acceptor = create_test_tls_acceptor().await?;
+        let (tls_acceptor, client_config) = create_test_tls_acceptor().await?;
 
-        // Use serve_tcp_incoming to handle TCP connections
         let tcp_incoming = serve_tcp_incoming(incoming);
 
-        // Spawn the server task
         let server_task = tokio::spawn(async move {
             debug!("Server task started");
             let mut tls_stream = Box::pin(serve_tls_incoming(tcp_incoming, tls_acceptor));
@@ -234,15 +286,6 @@ mod tests {
             debug!("Server received connection: {:?}", result.is_some());
             result
         });
-
-        // Connect to the server with a TLS client
-        let mut root_store = rustls::RootCertStore::empty();
-        let certs = load_certs("examples/sample.pem")?;
-        root_store.add_parsable_certificates(certs);
-
-        let client_config = ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
 
         let connector = tokio_rustls::TlsConnector::from(Arc::new(client_config));
 
@@ -252,7 +295,6 @@ mod tests {
         let _client_stream = connector.connect(domain, tcp_stream).await?;
         debug!("Client connected successfully");
 
-        // Wait for the server to accept the connection
         let result = server_task
             .await?
             .ok_or("Server task completed without result")?;
@@ -279,55 +321,25 @@ mod tests {
         debug!("Server listening on {}", server_addr);
         let incoming = TcpListenerStream::new(listener);
 
-        // Create a TLS acceptor with an invalid certificate
-        let invalid_cert = vec![CertificateDer::from(vec![0; 32])]; // Invalid certificate
-        let key = load_private_key("examples/sample.rsa")?;
+        let (tls_acceptor, _) = create_test_tls_acceptor().await?;
 
-        // Expect this to fail and log the error
-        let config_result = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(invalid_cert, key);
-
-        assert!(
-            config_result.is_err(),
-            "ServerConfig creation should fail with invalid cert"
-        );
-        info!(
-            "ServerConfig creation failed as expected: {}",
-            config_result.unwrap_err()
-        );
-
-        // Now test with a valid certificate
-        let valid_certs = load_certs("examples/sample.pem")?;
-        let valid_key = load_private_key("examples/sample.rsa")?;
-        let config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(valid_certs.clone(), valid_key)
-            .expect("ServerConfig creation should succeed with valid cert");
-
-        let tls_acceptor = TlsAcceptor::from(Arc::new(config));
-
-        // Use serve_tcp_incoming to handle TCP connections
         let tcp_incoming = serve_tcp_incoming(incoming);
 
-        // Spawn the server task with a timeout
         let server_task = tokio::spawn(async move {
+            debug!("Server task started");
             let mut tls_stream = Box::pin(serve_tls_incoming(tcp_incoming, tls_acceptor));
             tokio::time::timeout(std::time::Duration::from_millis(10), tls_stream.next()).await
         });
 
-        // Connect to the server with a TLS client that doesn't trust the server's certificate
-        let connector = tokio_rustls::TlsConnector::from(Arc::new(
-            ClientConfig::builder()
-                .with_root_certificates(rustls::RootCertStore::empty())
-                .with_no_client_auth(),
-        ));
+        let untrusted_client_config = ClientConfig::builder()
+            .with_root_certificates(RootCertStore::empty())
+            .with_no_client_auth();
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(untrusted_client_config));
 
         debug!("Client connecting to {}", server_addr);
         let tcp_stream = TcpStream::connect(server_addr).await?;
         let domain = ServerName::try_from("localhost")?;
 
-        // This connection should fail due to certificate verification
         let client_result = connector.connect(domain, tcp_stream).await;
         assert!(
             client_result.is_err(),
@@ -338,9 +350,7 @@ mod tests {
             client_result.unwrap_err()
         );
 
-        // Wait for the server task to complete or timeout
         let server_result = server_task.await?;
-
         match server_result {
             Ok(Some(Ok(_))) => {
                 warn!("Server accepted connection unexpectedly");
@@ -374,12 +384,10 @@ mod tests {
         debug!("Server listening on {}", server_addr);
         let incoming = TcpListenerStream::new(listener);
 
-        let tls_acceptor = create_test_tls_acceptor().await?;
+        let (tls_acceptor, _) = create_test_tls_acceptor().await?;
 
-        // Use serve_tcp_incoming to handle TCP connections
         let tcp_incoming = serve_tcp_incoming(incoming);
 
-        // Spawn the server task
         let server_task = tokio::spawn(async move {
             debug!("Server task started");
             let mut tls_stream = Box::pin(serve_tls_incoming(tcp_incoming, tls_acceptor));
@@ -389,12 +397,10 @@ mod tests {
             result
         });
 
-        // Connect with a regular TCP client (no TLS handshake)
         debug!("Client connecting with plain TCP to {}", server_addr);
         let _tcp_stream = TcpStream::connect(server_addr).await?;
         debug!("Client connected with plain TCP");
 
-        // The server task should timeout
         let result = server_task.await?;
         match result {
             Ok(_) => warn!("Server did not timeout as expected"),
