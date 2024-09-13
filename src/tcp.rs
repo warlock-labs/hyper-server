@@ -15,9 +15,9 @@ use tokio_stream::{Stream, StreamExt};
 ///
 /// # Type Parameters
 ///
-/// * [`IO`]: The type of the I/O object yielded by the incoming stream,
+/// * `IO`: The type of the I/O object yielded by the incoming stream,
 ///           usually a tokio IO.
-/// * [`IE`]: The type of the error that can be produced by the incoming stream,
+/// * `IE`: The type of the error that can be produced by the incoming stream,
 ///           usually a Tokio error.
 ///
 /// # Arguments
@@ -30,9 +30,10 @@ use tokio_stream::{Stream, StreamExt};
 ///
 /// # Error Handling
 ///
-/// This function uses `handle_accept_error` to determine whether to continue accepting
-/// connections after an error occurs. Non-fatal errors are logged and skipped, while
-/// fatal errors cause the stream to yield an error and terminate.
+/// This function determines whether to continue accepting
+/// connections after an error occurs. Non-fatal errors are logged to debug
+/// and skipped, while fatal errors cause the stream to yield an error
+/// and terminate.
 ///
 /// # Examples
 ///
@@ -76,8 +77,7 @@ where
                     // connection on the `IO` stream
                     ControlFlow::Continue(()) => continue,
                     // For fatal errors, yield the error and terminate
-                    // the stream, breaking the loop and tearing down the
-                    // server
+                    // the stream, breaking the loop
                     ControlFlow::Break(e) => yield Err(e),
                 }
             }

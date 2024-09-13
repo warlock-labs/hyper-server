@@ -18,26 +18,26 @@ use tokio_stream::Stream;
 ///
 /// # Type Parameters
 ///
-/// * [`IO`]: The I/O type representing the underlying TCP connection. It must implement
-///   [`AsyncRead`], [`AsyncWrite`], [`Unpin`], [`Send`], and have a static lifetime.
-/// * [`IE`]: The error type of the incoming TCP stream, which must be convertible to
-///           the crate's [`TransportError`].
+/// * `IO`: The I/O type representing the underlying TCP connection. It must implement
+///   `AsyncRead`, `AsyncWrite`, `Unpin`], `Send`, and have a static lifetime.
+/// * `IE`: The error type of the incoming TCP stream, which must be convertible to
+///           the crate's `TransportError`.
 ///
 /// # Arguments
 ///
 /// * `tcp_stream`: A stream that yields `Result<IO, IE>` items, representing incoming
 ///   TCP connections or errors.
-/// * `tls`: A [`TlsAcceptor`] used to perform the TLS handshake on each TCP connection.
+/// * `tls`: A `TlsAcceptor` used to perform the TLS handshake on each TCP connection.
 ///
 /// # Returns
 ///
-/// A new [`Stream`] that yields `Result<tokio_rustls::server::TlsStream<IO>, TransportError>`
+/// A new `Stream` that yields `Result<tokio_rustls::server::TlsStream<IO>, TransportError>`
 /// items. Each item is either a successfully established TLS connection or an error.
 ///
 /// # Error Handling
 ///
 /// - TCP connection errors from the input stream are passed through the `handle_accept_error` function.
-/// - TLS handshake errors are converted to [`TransportError`] and passed through [`handle_accept_error`]
+/// - TLS handshake errors are converted to `TransportError`.
 /// - Non-fatal errors result in skipping the current connection attempt and continuing to the next.
 /// - Fatal errors are propagated, potentially leading to stream termination.
 ///
